@@ -1,0 +1,13 @@
+/db/boringbot.sqlite
+/logs/*.log
+/storage/*.lock
+/.env
+/config/.env
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Dependencies (if you add Composer later)
+/vendor/
