@@ -34,9 +34,23 @@ if (!$lock->acquire()) {
     exit(0);
 }
 
+function setMeta(Database $db, string $k, string $v): void
+{
+    // Compatible with older SQLite versions.
+    $db->exec('INSERT OR REPLACE INTO meta(k, v) VALUES(:k, :v)', [':k' => $k, ':v' => $v]);
+}
+
 try {
     $db = new Database($cfg['db_path']);
     $db->migrateFromFile($root . '/db/schema.sql');
+
+    $startedAt = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    setMeta($db, 'last_run_started_at', $startedAt->format(DATE_ATOM));
+    $db->insert('INSERT INTO events_log(type, payload_json) VALUES(:t, :p)', [
+        ':t' => 'RUN_START',
+        ':p' => json_encode(['dry_run' => $dryRun], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+    ]);
+    $logger->info('Run tick start', ['dry_run' => $dryRun]);
 
     $bybit = new BybitClient(
         $cfg['bybit']['base_url'],
@@ -91,6 +105,15 @@ try {
 
     $bot = new DcaBot($db, $purchases, $logger);
     $code = $bot->run();
+
+    $endedAt = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    setMeta($db, 'last_run_finished_at', $endedAt->format(DATE_ATOM));
+    $db->insert('INSERT INTO events_log(type, payload_json) VALUES(:t, :p)', [
+        ':t' => 'RUN_FINISH',
+        ':p' => json_encode(['dry_run' => $dryRun, 'exit_code' => $code], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+    ]);
+    $logger->info('Run tick finish', ['dry_run' => $dryRun, 'exit_code' => $code]);
+
     exit($code);
 } finally {
     $lock->release();

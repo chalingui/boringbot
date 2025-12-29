@@ -69,6 +69,46 @@ function fmtDbDt(?string $sqliteDt): string
     }
 }
 
+function fmtAtomLocal(?string $atom): string
+{
+    if ($atom === null || $atom === '') {
+        return '';
+    }
+    try {
+        $dt = new DateTimeImmutable($atom);
+        return $dt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s');
+    } catch (Throwable) {
+        return $atom;
+    }
+}
+
+function ago(?string $atom): string
+{
+    if ($atom === null || $atom === '') {
+        return 'n/a';
+    }
+    try {
+        $dt = new DateTimeImmutable($atom);
+        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $diff = $now->getTimestamp() - $dt->setTimezone(new DateTimeZone('UTC'))->getTimestamp();
+        if ($diff < 0) {
+            $diff = 0;
+        }
+        if ($diff < 60) {
+            return 'hace ' . $diff . 's';
+        }
+        if ($diff < 3600) {
+            return 'hace ' . (int)floor($diff / 60) . 'm';
+        }
+        if ($diff < 86400) {
+            return 'hace ' . (int)floor($diff / 3600) . 'h';
+        }
+        return 'hace ' . (int)floor($diff / 86400) . 'd';
+    } catch (Throwable) {
+        return 'n/a';
+    }
+}
+
 renderHeader(match ($view) {
     'purchases' => 'Compras',
     'events' => 'Eventos',
@@ -145,6 +185,32 @@ $balances = $db->fetchAll('SELECT asset, amount FROM balances ORDER BY asset ASC
 $lastEvents = $db->fetchAll('SELECT id, created_at, type, payload_json FROM events_log ORDER BY id DESC LIMIT 20');
 $open = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","SOLD_PENDING_CONVERT")');
 $sold = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status = "SOLD"');
+$meta = $db->fetchAll('SELECT k, v FROM meta WHERE k IN ("last_run_finished_at","last_reconcile_finished_at")');
+$metaMap = [];
+foreach ($meta as $m) {
+    $metaMap[(string)$m['k']] = (string)$m['v'];
+}
+$lastRun = $metaMap['last_run_finished_at'] ?? null;
+$lastRecon = $metaMap['last_reconcile_finished_at'] ?? null;
+$lastAny = null;
+if (is_string($lastRun) && $lastRun !== '') {
+    $lastAny = $lastRun;
+}
+if (is_string($lastRecon) && $lastRecon !== '') {
+    if ($lastAny === null) {
+        $lastAny = $lastRecon;
+    } else {
+        try {
+            $a = new DateTimeImmutable($lastAny);
+            $b = new DateTimeImmutable($lastRecon);
+            if ($b > $a) {
+                $lastAny = $lastRecon;
+            }
+        } catch (Throwable) {
+            // ignore
+        }
+    }
+}
 
 echo '<div class="grid">';
 echo '<div class="card col6"><div class="muted">Balances (ledger)</div><div class="kpi">';
@@ -160,6 +226,7 @@ echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:1
 echo '<div class="item"><div class="muted">Trade symbol</div><div style="font-size:18px">' . h((string)($cfg['symbols']['trade'] ?? '')) . '</div></div>';
 echo '<div class="item"><div class="muted">DCA</div><div style="font-size:18px">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
 echo '<div class="item"><div class="muted">Sell markup</div><div style="font-size:18px">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
+echo '<div class="item"><div class="muted">Última actualización</div><div style="font-size:18px">' . h(ago($lastAny)) . '</div><div class="muted" style="margin-top:2px">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
 echo '</div>';
 echo '</div>';
 
