@@ -140,7 +140,7 @@ if ($view === 'purchases') {
     echo '<div class="card">';
     echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
     echo '<div class="table-wrap"><table><thead><tr>';
-    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Buy Order</th><th>Sell Order</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Δ %</th><th>Profit</th>';
+    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Δ %</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
     foreach ($rows as $p) {
         $id = (int)$p['id'];
@@ -156,8 +156,6 @@ if ($view === 'purchases') {
         echo '<td>' . h(number_format((float)$p['buy_usdt'], 2, '.', '')) . '</td>';
         echo '<td>' . h(v($p['buy_price'] ?? null)) . '</td>';
         echo '<td>' . h(v($p['buy_qty'] ?? null)) . '</td>';
-        echo '<td><code>' . h(v($p['buy_order_id'] ?? null)) . '</code></td>';
-        echo '<td><code>' . h(v($p['sell_order_id'] ?? null)) . '</code></td>';
         echo '<td>' . h(v($p['sell_price'] ?? null)) . '</td>';
         echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
         if ($deltaPx === null) {
