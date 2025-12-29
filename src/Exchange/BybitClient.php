@@ -7,6 +7,9 @@ use RuntimeException;
 
 final class BybitClient
 {
+    /** @var array<string, array> */
+    private array $instrumentCache = [];
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $apiKey,
@@ -95,6 +98,8 @@ final class BybitClient
 
     public function createLimitSell(string $symbol, float $qtyBase, float $price): string
     {
+        [$qtyBase, $price] = $this->normalizeLimitOrder($symbol, $qtyBase, $price);
+
         $data = $this->request('POST', '/v5/order/create', [
             'category' => 'spot',
             'symbol' => $symbol,
@@ -223,5 +228,89 @@ final class BybitClient
         // Keep Bybit happy: trim trailing zeros, avoid scientific notation.
         $s = rtrim(rtrim(number_format($n, 10, '.', ''), '0'), '.');
         return $s === '' ? '0' : $s;
+    }
+
+    /**
+     * Normalizes qty/price to symbol filters (qtyStep and tickSize).
+     * - qty is floored to step (never exceeds available)
+     * - price is ceiled to tick (keeps target at or above requested price)
+     */
+    private function normalizeLimitOrder(string $symbol, float $qtyBase, float $price): array
+    {
+        $info = $this->instrumentInfo($symbol);
+        $lot = $info['lotSizeFilter'] ?? [];
+        $pf = $info['priceFilter'] ?? [];
+
+        $qtyStep = (string)($lot['qtyStep'] ?? '');
+        $tickSize = (string)($pf['tickSize'] ?? '');
+        $minOrderQty = isset($lot['minOrderQty']) ? (float)$lot['minOrderQty'] : null;
+        $minOrderAmt = isset($lot['minOrderAmt']) ? (float)$lot['minOrderAmt'] : null;
+
+        $qty = $qtyBase;
+        if ($qtyStep !== '' && (float)$qtyStep > 0) {
+            $qty = $this->floorToStep($qtyBase, (float)$qtyStep, $this->decimalsFromStep($qtyStep));
+        }
+
+        $p = $price;
+        if ($tickSize !== '' && (float)$tickSize > 0) {
+            $p = $this->ceilToStep($price, (float)$tickSize, $this->decimalsFromStep($tickSize));
+        }
+
+        if ($qty <= 0 || $p <= 0) {
+            throw new RuntimeException("Invalid normalized order params for {$symbol}: qty={$qty}, price={$p}");
+        }
+        if ($minOrderQty !== null && $qty + 1e-12 < $minOrderQty) {
+            throw new RuntimeException("Order qty below minOrderQty for {$symbol}: qty={$qty}, min={$minOrderQty}");
+        }
+        if ($minOrderAmt !== null && ($qty * $p) + 1e-8 < $minOrderAmt) {
+            throw new RuntimeException("Order notional below minOrderAmt for {$symbol}: amt=" . ($qty * $p) . ", min={$minOrderAmt}");
+        }
+
+        return [$qty, $p];
+    }
+
+    private function instrumentInfo(string $symbol): array
+    {
+        if (isset($this->instrumentCache[$symbol])) {
+            return $this->instrumentCache[$symbol];
+        }
+
+        $data = $this->request('GET', '/v5/market/instruments-info', [
+            'category' => 'spot',
+            'symbol' => $symbol,
+        ], false);
+
+        $list = $data['result']['list'] ?? [];
+        if (!is_array($list) || $list === []) {
+            throw new RuntimeException("No instrument info for {$symbol}");
+        }
+        $this->instrumentCache[$symbol] = $list[0];
+        return $this->instrumentCache[$symbol];
+    }
+
+    private function decimalsFromStep(string $step): int
+    {
+        $step = trim($step);
+        if ($step === '' || !str_contains($step, '.')) {
+            return 0;
+        }
+        $step = rtrim($step, '0');
+        $pos = strpos($step, '.');
+        if ($pos === false) {
+            return 0;
+        }
+        return max(0, strlen($step) - $pos - 1);
+    }
+
+    private function floorToStep(float $value, float $step, int $decimals): float
+    {
+        $mult = floor(($value + 1e-12) / $step);
+        return round($mult * $step, $decimals);
+    }
+
+    private function ceilToStep(float $value, float $step, int $decimals): float
+    {
+        $mult = ceil(($value - 1e-12) / $step);
+        return round($mult * $step, $decimals);
     }
 }

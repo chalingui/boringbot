@@ -109,6 +109,15 @@ function ago(?string $atom): string
     }
 }
 
+function v($x): string
+{
+    if ($x === null) {
+        return '—';
+    }
+    $s = (string)$x;
+    return $s === '' ? '—' : $s;
+}
+
 renderHeader(match ($view) {
     'purchases' => 'Compras',
     'events' => 'Eventos',
@@ -117,6 +126,7 @@ renderHeader(match ($view) {
 });
 
 if ($view === 'purchases') {
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
     $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
     echo '<div class="card"><table><thead><tr>';
     echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy</th><th>Sell</th><th>Profit</th>';
@@ -125,22 +135,29 @@ if ($view === 'purchases') {
         $id = (int)$p['id'];
         $status = (string)$p['status'];
         echo '<tr>';
-        echo '<td>#' . h((string)$id) . '</td>';
+        echo '<td><a href="/dashboard/?view=purchases#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '</td>';
         echo '<td>';
-        echo h((string)$p['buy_usdt']) . " USDT<br><span class=\"muted\">price=" . h((string)($p['buy_price'] ?? '')) . " qty=" . h((string)($p['buy_qty'] ?? '')) . '</span>';
+        echo h(number_format((float)$p['buy_usdt'], 2, '.', '')) . " USDT";
+        echo '<br><span class="muted">order=' . h(v($p['buy_order_id'] ?? null)) . '</span>';
+        echo '<br><span class="muted">filled_at=' . h(fmtDbDt($p['buy_filled_at'] ?? null)) . '</span>';
+        echo '<br><span class="muted">price=' . h(v($p['buy_price'] ?? null)) . ' qty=' . h(v($p['buy_qty'] ?? null)) . '</span>';
         echo '</td>';
         echo '<td>';
-        echo '<span class="muted">target=' . h((string)($p['sell_price'] ?? '')) . ' qty=' . h((string)($p['sell_qty'] ?? '')) . '</span><br>';
-        echo 'filled=' . h((string)($p['sell_usdt'] ?? '')) . ' USDT';
+        echo '<span class="muted">order=' . h(v($p['sell_order_id'] ?? null)) . '</span>';
+        echo '<br><span class="muted">target=' . h(v($p['sell_price'] ?? null)) . ' qty=' . h(v($p['sell_qty'] ?? null)) . '</span>';
+        echo '<br><span class="muted">filled_at=' . h(fmtDbDt($p['sell_filled_at'] ?? null)) . '</span>';
+        echo '<br>filled=' . h(v($p['sell_usdt'] ?? null)) . ' USDT';
         echo '</td>';
         echo '<td>';
-        echo 'profit=' . h((string)($p['profit_usdt'] ?? '')) . ' USDT<br><span class="muted">usdc=' . h((string)($p['profit_usdc'] ?? '')) . '</span>';
+        echo 'profit=' . h(v($p['profit_usdt'] ?? null)) . ' USDT';
+        echo '<br><span class="muted">usdc=' . h(v($p['profit_usdc'] ?? null)) . '</span>';
         echo '</td>';
         echo '</tr>';
     }
     echo '</tbody></table></div>';
+    echo '<div class="muted" style="margin-top:8px">Nota: la compra pasa de BUYING→OPEN cuando el cron detecta el fill y coloca la LIMIT SELL.</div>';
     renderFooter();
     exit;
 }
