@@ -34,6 +34,7 @@ function renderHeader(string $title): void
       .table-wrap{overflow-x:auto}
       code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
       pre{white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.2);padding:10px;border-radius:10px;border:1px solid var(--line);max-height:520px;overflow:auto;font-size:11px;line-height:1.3}
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;line-height:1.3}
       .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:12px}
       .pill.OPEN{border-color:rgba(65,209,139,.4);color:var(--ok)}
       .pill.SOLD{border-color:rgba(159,183,255,.5);color:#9fb7ff}

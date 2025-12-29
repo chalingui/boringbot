@@ -280,8 +280,8 @@ function renderMovementsTable(Database $db, int $limit = 50): void
 
         echo '<tr>';
         echo '<td>' . h(fmtDbDt((string)$e['created_at'])) . '</td>';
-        echo '<td><code>' . h($type) . '</code></td>';
-        echo '<td><code>' . h($payload) . '</code></td>';
+        echo '<td><span class="mono">' . h($type) . '</span></td>';
+        echo '<td><span class="mono">' . h($payload) . '</span></td>';
         echo '</tr>';
 
         $shown++;
