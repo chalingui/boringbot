@@ -101,8 +101,10 @@ final class BybitClient
         $info = $this->instrumentInfo($symbol);
         [$qtyBase, $price] = $this->normalizeLimitOrder($info, $symbol, $qtyBase, $price);
 
-        $qtyDecimals = $this->decimalsFromStep((string)(($info['lotSizeFilter'] ?? [])['qtyStep'] ?? ''));
-        $tickDecimals = $this->decimalsFromStep((string)(($info['priceFilter'] ?? [])['tickSize'] ?? ''));
+        $qtyStepStr = (string)(($info['lotSizeFilter'] ?? [])['qtyStep'] ?? '');
+        $tickSizeStr = (string)(($info['priceFilter'] ?? [])['tickSize'] ?? '');
+        $qtyDecimals = $this->decimalsForStep($qtyStepStr);
+        $tickDecimals = $this->decimalsForStep($tickSizeStr);
         $priceDecimals = isset($info['priceScale']) ? (int)$info['priceScale'] : $tickDecimals;
         $priceDecimals = max(0, min(10, $priceDecimals));
 
@@ -254,12 +256,12 @@ final class BybitClient
 
         $qty = $qtyBase;
         if ($qtyStep !== '' && (float)$qtyStep > 0) {
-            $qty = $this->floorToStep($qtyBase, (float)$qtyStep, $this->decimalsFromStep($qtyStep));
+            $qty = $this->floorToStep($qtyBase, (float)$qtyStep, $this->decimalsForStep($qtyStep));
         }
 
         $p = $price;
         if ($tickSize !== '' && (float)$tickSize > 0) {
-            $tickDecimals = $this->decimalsFromStep($tickSize);
+            $tickDecimals = $this->decimalsForStep($tickSize);
             $priceDecimals = $priceScale !== null ? $priceScale : $tickDecimals;
             // Use enough decimals for correct stepping, then clamp to the configured scale.
             $calcDecimals = max($tickDecimals, $priceDecimals);
@@ -311,6 +313,33 @@ final class BybitClient
             return 0;
         }
         return max(0, strlen($step) - $pos - 1);
+    }
+
+    private function decimalsForStep(string $step): int
+    {
+        $step = trim($step);
+        if ($step === '') {
+            return 0;
+        }
+
+        // Handle scientific notation (e.g. 1e-6).
+        if (preg_match('/^[0-9]+(?:\\.[0-9]+)?[eE]-(\\d+)$/', $step, $m) === 1) {
+            return max(0, min(10, (int)$m[1]));
+        }
+
+        $d = $this->decimalsFromStep($step);
+        if ($d > 0) {
+            return min(10, $d);
+        }
+
+        $f = (float)$step;
+        if ($f > 0 && $f < 1) {
+            // Fallback if API returns step without '.' but value is fractional.
+            $approx = (int)ceil(-log10($f) - 1e-12);
+            return max(0, min(10, $approx));
+        }
+
+        return 0;
     }
 
     private function floorToStep(float $value, float $step, int $decimals): float
