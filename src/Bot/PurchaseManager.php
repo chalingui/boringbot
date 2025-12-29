@@ -218,9 +218,24 @@ final class PurchaseManager
             try {
                 $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $qty, $targetPrice);
             } catch (Throwable $e) {
+                $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+                $avail = null;
+                if ($baseAsset !== '') {
+                    try {
+                        $avail = $this->bybit->walletBalance($baseAsset);
+                    } catch (Throwable) {
+                        $avail = null;
+                    }
+                }
                 $this->logger->error('Retry sell placement failed', [
                     'purchase_id' => $p['id'],
                     'error' => $e->getMessage(),
+                    'symbol' => $this->symbolTrade,
+                    'attempt_qty' => round($qty, 8),
+                    'attempt_price' => round($targetPrice, 8),
+                    'base_asset' => $baseAsset,
+                    'available_base' => is_float($avail) ? round($avail, 8) : null,
+                    'recorded_buy_qty' => round((float)($p['buy_qty'] ?? 0.0), 8),
                 ]);
                 continue;
             }
