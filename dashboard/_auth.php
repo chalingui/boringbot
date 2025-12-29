@@ -8,6 +8,12 @@ require __DIR__ . '/../src/autoload.php';
 $root = dirname(__DIR__);
 $cfg = Config::load($root);
 
+// Prevent caching (dashboard is near-realtime operational data).
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Cache-Control: post-check=0, pre-check=0', false);
+header('Pragma: no-cache');
+header('Expires: 0');
+
 $user = (string)(getenv('DASHBOARD_USER') ?: 'admin');
 $pass = (string)(getenv('DASHBOARD_PASS') ?: '');
 
@@ -28,4 +34,3 @@ if (!hash_equals($user, $providedUser) || !hash_equals($pass, $providedPass)) {
     echo "Unauthorized\n";
     exit;
 }
-

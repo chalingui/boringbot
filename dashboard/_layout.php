@@ -10,6 +10,9 @@ function renderHeader(string $title): void
 {
     echo '<!doctype html><html lang="es"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
+    echo '<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">';
+    echo '<meta http-equiv="Pragma" content="no-cache">';
+    echo '<meta http-equiv="Expires" content="0">';
     echo '<title>' . h($title) . '</title>';
     echo '<style>
       :root{--bg:#0b1020;--card:#121a33;--text:#e8ecff;--muted:#9aa7d6;--line:#263158;--ok:#41d18b;--warn:#ffcd57;--bad:#ff6b6b;}
