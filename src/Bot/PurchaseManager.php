@@ -144,12 +144,12 @@ final class PurchaseManager
                 $this->insertEvent($sellOrderId === null ? 'BUY_FILLED_SELL_FAILED' : 'BUY_FILLED_SELL_PLACED', [
                     'purchase_id' => (int)$p['id'],
                     'buy_order_id' => (string)$p['buy_order_id'],
-                    'buy_qty' => $netQty,
-                    'buy_price' => $avgPrice,
-                    'buy_fee' => $fee,
+                    'buy_qty' => $this->fmt8($netQty),
+                    'buy_price' => $this->fmt8($avgPrice),
+                    'buy_fee' => $this->fmt8($fee),
                     'buy_fee_currency' => $feeCurrency,
                     'sell_order_id' => $sellOrderId,
-                    'sell_price' => $targetPrice,
+                    'sell_price' => $this->fmt8($targetPrice),
                 ]);
                 $this->db->commit();
             } catch (Throwable $e) {
@@ -240,6 +240,15 @@ final class PurchaseManager
                 continue;
             }
 
+            $this->logger->info('Limit sell placed (retry from HOLDING)', [
+                'purchase_id' => (int)$p['id'],
+                'symbol' => $this->symbolTrade,
+                'sell_order_id' => $sellOrderId,
+                'sell_qty' => $this->fmt8($qty),
+                'sell_price' => $this->fmt8($targetPrice),
+                'sell_markup_pct' => $this->fmt8((float)($p['sell_markup_pct'] ?? 0.0)),
+            ]);
+
             try {
                 $this->db->begin();
                 $this->db->exec(
@@ -260,7 +269,9 @@ final class PurchaseManager
                 $this->insertEvent('SELL_PLACED_RETRY', [
                     'purchase_id' => (int)$p['id'],
                     'sell_order_id' => $sellOrderId,
-                    'sell_price' => $targetPrice,
+                    'sell_price' => $this->fmt8($targetPrice),
+                    'sell_qty' => $this->fmt8($qty),
+                    'symbol' => $this->symbolTrade,
                 ]);
                 $this->db->commit();
             } catch (Throwable $e) {

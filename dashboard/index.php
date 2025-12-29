@@ -5,6 +5,7 @@ require __DIR__ . '/_auth.php';
 require __DIR__ . '/_layout.php';
 
 use BoringBot\DB\Database;
+use BoringBot\Exchange\BybitClient;
 use BoringBot\Utils\Config;
 
 $root = dirname(__DIR__);
@@ -126,9 +127,19 @@ renderHeader(match ($view) {
 });
 
 if ($view === 'purchases') {
-    $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
+    $bybit = new BybitClient(
+        (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
+        '',
+        '',
+    );
+    $symbolTrade = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
+    $lastPrice = $bybit->tickerLastPrice($symbolTrade);
+    $priceFetchedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+
     $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
-    echo '<div class="card"><table><thead><tr>';
+    echo '<div class="card">';
+    echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
+    echo '<table><thead><tr>';
     echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy</th><th>Sell</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
     foreach ($rows as $p) {
@@ -149,6 +160,19 @@ if ($view === 'purchases') {
         echo '<br><span class="muted">target=' . h(v($p['sell_price'] ?? null)) . ' qty=' . h(v($p['sell_qty'] ?? null)) . '</span>';
         echo '<br><span class="muted">filled_at=' . h(fmtDbDt($p['sell_filled_at'] ?? null)) . '</span>';
         echo '<br>filled=' . h(v($p['sell_usdt'] ?? null)) . ' USDT';
+        if ($status === 'OPEN' && $lastPrice !== null && $lastPrice > 0 && $p['sell_price'] !== null && $p['sell_qty'] !== null) {
+            $target = (float)$p['sell_price'];
+            $qty = (float)$p['sell_qty'];
+            if ($target > 0 && $qty > 0) {
+                if ($lastPrice >= $target) {
+                    echo '<br><span class="pill OPEN">ready</span>';
+                } else {
+                    $missingTotal = ($target - $lastPrice) * $qty;
+                    $missingPct = (($target / $lastPrice) - 1.0) * 100.0;
+                    echo '<br><span class="muted">gap=' . h(number_format($missingPct, 2, '.', '')) . '% | ' . h(number_format($missingTotal, 2, '.', '')) . ' USDT</span>';
+                }
+            }
+        }
         echo '</td>';
         echo '<td>';
         echo 'profit=' . h(v($p['profit_usdt'] ?? null)) . ' USDT';
