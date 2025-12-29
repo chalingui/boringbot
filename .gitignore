@@ -9,5 +9,9 @@
 .idea/
 .vscode/
 
+# cPanel / PHP logs
+error_log
+bin/error_log
+
 # Dependencies (if you add Composer later)
 /vendor/
