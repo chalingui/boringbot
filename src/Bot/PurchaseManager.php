@@ -101,9 +101,9 @@ final class PurchaseManager
 
             $this->logger->info('Buy filled; placing limit sell', [
                 'purchase_id' => $p['id'],
-                'qty' => round($netQty, 8),
-                'avg_price' => round($avgPrice, 8),
-                'fee' => round($fee, 8),
+                'qty' => $this->fmt8($netQty),
+                'avg_price' => $this->fmt8($avgPrice),
+                'fee' => $this->fmt8($fee),
                 'fee_currency' => $feeCurrency,
             ]);
 
@@ -184,8 +184,8 @@ final class PurchaseManager
                 if (is_float($avail) && $avail >= 0 && $avail + 1e-12 < $qty) {
                     $this->logger->warn('Adjusting HOLDING qty to available balance (likely fees)', [
                         'purchase_id' => $p['id'],
-                        'recorded_qty' => round($qty, 8),
-                        'available' => round($avail, 8),
+                        'recorded_qty' => $this->fmt8($qty),
+                        'available' => $this->fmt8($avail),
                         'asset' => $baseAsset,
                     ]);
                     $diff = $qty - $avail;
@@ -231,11 +231,11 @@ final class PurchaseManager
                     'purchase_id' => $p['id'],
                     'error' => $e->getMessage(),
                     'symbol' => $this->symbolTrade,
-                    'attempt_qty' => round($qty, 8),
-                    'attempt_price' => round($targetPrice, 8),
+                    'attempt_qty' => $this->fmt8($qty),
+                    'attempt_price' => $this->fmt8($targetPrice),
                     'base_asset' => $baseAsset,
-                    'available_base' => is_float($avail) ? round($avail, 8) : null,
-                    'recorded_buy_qty' => round((float)($p['buy_qty'] ?? 0.0), 8),
+                    'available_base' => is_float($avail) ? $this->fmt8($avail) : null,
+                    'recorded_buy_qty' => $this->fmt8((float)($p['buy_qty'] ?? 0.0)),
                 ]);
                 continue;
             }
@@ -500,9 +500,9 @@ final class PurchaseManager
                 'amount_usdt' => $this->dcaAmountUsdt,
                 'symbol' => $this->symbolTrade,
                 'last_price' => $ticker,
-                'buy_price' => round($buyPrice, 8),
-                'buy_qty' => round($buyQty, 8),
-                'sell_target_price' => round($targetPrice, 8),
+                'buy_price' => $this->fmt8($buyPrice),
+                'buy_qty' => $this->fmt8($buyQty),
+                'sell_target_price' => $this->fmt8($targetPrice),
                 'sell_markup_pct' => $this->sellMarkupPct,
             ]);
             return;
@@ -611,5 +611,11 @@ final class PurchaseManager
             return substr($symbol, 0, -4);
         }
         return '';
+    }
+
+    private function fmt8(float $n): string
+    {
+        // Fixed 8 decimals for logs/UI consistency.
+        return number_format($n, 8, '.', '');
     }
 }
