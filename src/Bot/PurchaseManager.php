@@ -421,6 +421,28 @@ final class PurchaseManager
             'dry_run' => $this->dryRun,
         ]);
 
+        if ($this->dryRun) {
+            $ticker = $this->bybit->tickerLastPrice($this->symbolTrade);
+            $buyPrice = $ticker ?? 0.0;
+            if ($buyPrice <= 0) {
+                $buyPrice = 0.0;
+            }
+
+            $buyQty = $buyPrice > 0 ? ($this->dcaAmountUsdt / $buyPrice) : 0.0;
+            $targetPrice = $buyPrice > 0 ? ($buyPrice * (1.0 + $this->sellMarkupPct / 100.0)) : 0.0;
+
+            $this->logger->info('DRY-RUN would create purchase and place orders', [
+                'amount_usdt' => $this->dcaAmountUsdt,
+                'symbol' => $this->symbolTrade,
+                'last_price' => $ticker,
+                'buy_price' => $buyPrice,
+                'buy_qty' => $buyQty,
+                'sell_target_price' => $targetPrice,
+                'sell_markup_pct' => $this->sellMarkupPct,
+            ]);
+            return;
+        }
+
         $purchaseId = 0;
         try {
             $this->db->begin();
@@ -451,54 +473,6 @@ final class PurchaseManager
 
         if (!$this->dryRun && $this->notifier !== null) {
             $this->notifier->purchaseCreated($purchaseId, $this->dcaAmountUsdt, $this->symbolTrade);
-        }
-
-        if ($this->dryRun) {
-            $ticker = $this->bybit->tickerLastPrice($this->symbolTrade);
-            $buyPrice = $ticker ?? 0.0;
-            if ($buyPrice <= 0) {
-                $buyPrice = 3000.0;
-            }
-            $buyQty = $this->dcaAmountUsdt / $buyPrice;
-            $targetPrice = $buyPrice * (1.0 + $this->sellMarkupPct / 100.0);
-
-            try {
-                $this->db->begin();
-                $this->db->exec(
-                    'UPDATE purchases SET
-                        buy_order_id = :bo,
-                        buy_price = :bp,
-                        buy_qty = :bq,
-                        buy_filled_at = datetime(\'now\'),
-                        sell_order_id = :so,
-                        sell_price = :sp,
-                        sell_qty = :sq,
-                        status = :st
-                     WHERE id = :id',
-                    [
-                        ':bo' => 'DRYRUN-BUY-' . $purchaseId,
-                        ':bp' => $buyPrice,
-                        ':bq' => $buyQty,
-                        ':so' => 'DRYRUN-SELL-' . $purchaseId,
-                        ':sp' => $targetPrice,
-                        ':sq' => $buyQty,
-                        ':st' => self::STATUS_OPEN,
-                        ':id' => $purchaseId,
-                    ]
-                );
-                $this->addBalance('ETH', $buyQty);
-                $this->insertEvent('DRYRUN_BUY_FILLED_SELL_PLACED', [
-                    'purchase_id' => $purchaseId,
-                    'buy_price' => $buyPrice,
-                    'buy_qty' => $buyQty,
-                    'sell_price' => $targetPrice,
-                ]);
-                $this->db->commit();
-            } catch (Throwable $e) {
-                $this->db->rollBack();
-                throw $e;
-            }
-            return;
         }
 
         try {

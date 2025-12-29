@@ -66,6 +66,7 @@ Modo simulación:
 ```bash
 php bin/run.php --dry-run
 ```
+En `--dry-run` el bot **no crea compras** ni modifica el ledger; solo loguea qué haría.
 
 ## Estado / reporting
 ```bash
