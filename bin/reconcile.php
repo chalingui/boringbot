@@ -9,6 +9,9 @@ use BoringBot\Utils\Logger;
 
 require __DIR__ . '/../src/autoload.php';
 
+$stdout = fopen('php://stdout', 'wb') ?: null;
+$stderr = fopen('php://stderr', 'wb') ?: null;
+
 $dryRun = in_array('--dry-run', $argv, true);
 $root = dirname(__DIR__);
 $cfg = Config::load($root);
@@ -28,11 +31,19 @@ $bybit = new BybitClient(
 try {
     $reconciler = new Reconciler($db, $bybit, $logger, $dryRun);
     $reconciler->reconcileUsdt();
-    fwrite(STDOUT, "OK\n");
+    if ($stdout) {
+        fwrite($stdout, "OK\n");
+    } else {
+        echo "OK\n";
+    }
     exit(0);
 } catch (Throwable $e) {
     $logger->error('Reconcile failed', ['error' => $e->getMessage(), 'class' => get_class($e)]);
-    fwrite(STDERR, "ERROR: " . $e->getMessage() . "\n");
+    $msg = "ERROR: " . $e->getMessage();
+    if ($stderr) {
+        fwrite($stderr, $msg . "\n");
+    } else {
+        error_log($msg);
+    }
     exit(1);
 }
-

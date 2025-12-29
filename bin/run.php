@@ -14,6 +14,9 @@ use BoringBot\Utils\Mailer;
 
 require __DIR__ . '/../src/autoload.php';
 
+$stdout = fopen('php://stdout', 'wb') ?: null;
+$stderr = fopen('php://stderr', 'wb') ?: null;
+
 $dryRun = in_array('--dry-run', $argv, true);
 $root = dirname(__DIR__);
 $cfg = Config::load($root);
@@ -22,7 +25,12 @@ $logger = new Logger($cfg['log_path']);
 $lock = new Lock($cfg['lock_path']);
 if (!$lock->acquire()) {
     $logger->warn('Another instance is running; exiting.');
-    fwrite(STDERR, "Locked (already running).\n");
+    $msg = "Locked (already running).\n";
+    if ($stderr) {
+        fwrite($stderr, $msg);
+    } else {
+        error_log(trim($msg));
+    }
     exit(0);
 }
 

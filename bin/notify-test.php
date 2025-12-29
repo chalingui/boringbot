@@ -10,6 +10,9 @@ use BoringBot\Utils\Mailer;
 
 require __DIR__ . '/../src/autoload.php';
 
+$stdout = fopen('php://stdout', 'wb') ?: null;
+$stderr = fopen('php://stderr', 'wb') ?: null;
+
 $dryRun = in_array('--dry-run', $argv, true);
 $root = dirname(__DIR__);
 $cfg = Config::load($root);
@@ -19,7 +22,12 @@ $db = new Database($cfg['db_path']);
 $db->migrateFromFile($root . '/db/schema.sql');
 
 if (($cfg['notify']['enabled'] ?? false) !== true) {
-    fwrite(STDERR, "NOTIFY_ENABLED=0 (disabled)\n");
+    $msg = "NOTIFY_ENABLED=0 (disabled)\n";
+    if ($stderr) {
+        fwrite($stderr, $msg);
+    } else {
+        error_log(trim($msg));
+    }
     exit(1);
 }
 
@@ -44,7 +52,12 @@ $notifier = new Notifier(
 );
 
 if (!$notifier->isEnabled()) {
-    fwrite(STDERR, "Notifier not fully configured (check NOTIFY_EMAIL_TO/NOTIFY_EMAIL_FROM/SMTP_*).\n");
+    $msg = "Notifier not fully configured (check NOTIFY_EMAIL_TO/NOTIFY_EMAIL_FROM/SMTP_*).\n";
+    if ($stderr) {
+        fwrite($stderr, $msg);
+    } else {
+        error_log(trim($msg));
+    }
     exit(1);
 }
 
@@ -55,11 +68,19 @@ try {
         '[boringbot] Test email',
         "Test OK.\nDry-run: " . ($dryRun ? 'yes' : 'no') . "\n"
     );
-    fwrite(STDOUT, "OK\n");
+    if ($stdout) {
+        fwrite($stdout, "OK\n");
+    } else {
+        echo "OK\n";
+    }
     exit(0);
 } catch (Throwable $e) {
     $logger->error('Notify test failed', ['error' => $e->getMessage(), 'class' => get_class($e)]);
-    fwrite(STDERR, "ERROR: " . $e->getMessage() . "\n");
+    $msg = "ERROR: " . $e->getMessage();
+    if ($stderr) {
+        fwrite($stderr, $msg . "\n");
+    } else {
+        error_log($msg);
+    }
     exit(1);
 }
-
