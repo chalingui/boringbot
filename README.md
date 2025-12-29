@@ -100,6 +100,11 @@ Muestra:
 ## Deploy en cPanel (nota)
 Si clonás el repo dentro de `public_html`, bloqueá acceso web a `src/`, `bin/`, `config/`, `db/`, `logs/`, `storage/` (incluye `.env`). Este repo incluye `.htaccess` para eso; aun así, lo ideal es apuntar el DocumentRoot a otra carpeta.
 
+## cPanel Auto-Deploy (opcional)
+Este repo incluye `.cpanel.yml` para deployments automáticos desde **cPanel → Git Version Control → Manage → Deploy**.
+- Editar `DEPLOYPATH` dentro de `.cpanel.yml` para tu ruta del servidor.
+- `config/.env` no se versiona; queda intacto en el servidor.
+
 ## Dashboard (opcional)
 Hay un dashboard simple en `/dashboard/` (solo lectura) con HTTP Basic Auth.
 

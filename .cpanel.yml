@@ -1,0 +1,11 @@
+deployment:
+  tasks:
+    # Set this to your document root (or desired deploy path).
+    # Example:
+    - export DEPLOYPATH=/home8/xyucom/public_html/boringbot.xyu.com.ar/
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/mkdir -p $DEPLOYPATH/db $DEPLOYPATH/logs $DEPLOYPATH/storage
+
+    # Copy application code (does NOT overwrite config/.env since it's not tracked in git).
+    - /bin/cp -R bin src dashboard config db README.md index.php .htaccess .gitignore $DEPLOYPATH
+
