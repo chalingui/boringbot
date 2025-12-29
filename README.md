@@ -106,3 +106,7 @@ Hay un dashboard simple en `/dashboard/` (solo lectura) con HTTP Basic Auth.
 Configurar en `.env`:
 - `DASHBOARD_USER` (default `admin`)
 - `DASHBOARD_PASS` (obligatorio)
+
+## Timezone (opcional)
+Para mostrar logs/dashboard en horario local, configurar:
+- `BORINGBOT_TIMEZONE=America/Argentina/Buenos_Aires`

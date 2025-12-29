@@ -14,6 +14,18 @@ $logger = new Logger($cfg['log_path']);
 $db = new Database($cfg['db_path']);
 $db->migrateFromFile($root . '/db/schema.sql');
 
+$fmtDbDt = static function (?string $sqliteDt): string {
+    if ($sqliteDt === null || $sqliteDt === '') {
+        return '';
+    }
+    try {
+        $dt = new DateTimeImmutable($sqliteDt . ' UTC');
+        return $dt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s');
+    } catch (Throwable) {
+        return $sqliteDt;
+    }
+};
+
 $id = null;
 foreach ($argv as $i => $arg) {
     if ($arg === '--id' && isset($argv[$i + 1])) {
@@ -45,7 +57,7 @@ if ($id !== null && $id > 0) {
 
     echo "Purchase #{$id}\n";
     echo "- status: {$p['status']}\n";
-    echo "- created_at: {$p['created_at']}\n";
+    echo "- created_at: " . $fmtDbDt((string)$p['created_at']) . "\n";
     echo "- buy_usdt: {$p['buy_usdt']}\n";
     echo "- buy_order_id: {$p['buy_order_id']}\n";
     echo "- buy_price: {$p['buy_price']}\n";
@@ -87,7 +99,7 @@ foreach ($rows as $p) {
     echo sprintf(
         "- #%d %s %s buy_usdt=%.2f buy_price=%s buy_qty=%s sell_price=%s sell_usdt=%s\n",
         (int)$p['id'],
-        $p['created_at'],
+        $fmtDbDt((string)$p['created_at']),
         $p['status'],
         (float)$p['buy_usdt'],
         $p['buy_price'] === null ? 'null' : (string)$p['buy_price'],
@@ -98,4 +110,3 @@ foreach ($rows as $p) {
 }
 
 echo "\nTip: php bin/status.php --id N\n";
-

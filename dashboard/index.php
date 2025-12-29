@@ -54,6 +54,21 @@ function tailFile(string $path, int $maxLines = 200, bool $newestFirst = false):
     return trim(implode("\n", $lines)) . "\n";
 }
 
+function fmtDbDt(?string $sqliteDt): string
+{
+    if ($sqliteDt === null || $sqliteDt === '') {
+        return '';
+    }
+    try {
+        // SQLite datetime('now') is UTC.
+        $dt = new DateTimeImmutable($sqliteDt . ' UTC');
+        $local = $dt->setTimezone(new DateTimeZone(date_default_timezone_get()));
+        return $local->format('Y-m-d H:i:s');
+    } catch (Throwable) {
+        return $sqliteDt;
+    }
+}
+
 renderHeader(match ($view) {
     'purchases' => 'Compras',
     'events' => 'Eventos',
@@ -72,7 +87,7 @@ if ($view === 'purchases') {
         echo '<tr>';
         echo '<td>#' . h((string)$id) . '</td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
-        echo '<td>' . h((string)$p['created_at']) . '</td>';
+        echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '</td>';
         echo '<td>';
         echo h((string)$p['buy_usdt']) . " USDT<br><span class=\"muted\">price=" . h((string)($p['buy_price'] ?? '')) . " qty=" . h((string)($p['buy_qty'] ?? '')) . '</span>';
         echo '</td>';
@@ -101,7 +116,7 @@ if ($view === 'events') {
         }
         echo '<tr>';
         echo '<td>' . h((string)$e['id']) . '</td>';
-        echo '<td>' . h((string)$e['created_at']) . '</td>';
+        echo '<td>' . h(fmtDbDt((string)$e['created_at'])) . '</td>';
         echo '<td><code>' . h((string)$e['type']) . '</code></td>';
         echo '<td><pre style="margin:0">' . h($payload) . '</pre></td>';
         echo '</tr>';
@@ -159,7 +174,7 @@ foreach ($lastEvents as $e) {
         $payload = substr($payload, 0, 240) . '…';
     }
     echo '<tr>';
-    echo '<td>' . h((string)$e['created_at']) . '</td>';
+    echo '<td>' . h(fmtDbDt((string)$e['created_at'])) . '</td>';
     echo '<td><code>' . h((string)$e['type']) . '</code></td>';
     echo '<td><code>' . h($payload) . '</code></td>';
     echo '</tr>';

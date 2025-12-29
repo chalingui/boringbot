@@ -8,6 +8,7 @@ final class Config
     public static function load(string $rootDir): array
     {
         self::loadDotEnv($rootDir);
+        self::applyTimezone();
 
         $configFile = $rootDir . '/config/config.php';
         /** @var array $cfg */
@@ -47,6 +48,22 @@ final class Config
         }
 
         return $cfg;
+    }
+
+    private static function applyTimezone(): void
+    {
+        $tz = getenv('BORINGBOT_TIMEZONE') ?: (getenv('APP_TIMEZONE') ?: '');
+        $tz = is_string($tz) ? trim($tz) : '';
+        if ($tz === '') {
+            return;
+        }
+        // Avoid warnings on invalid TZ; keep PHP default if invalid.
+        try {
+            new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            return;
+        }
+        date_default_timezone_set($tz);
     }
 
     private static function loadDotEnv(string $rootDir): void

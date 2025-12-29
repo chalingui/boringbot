@@ -30,7 +30,7 @@ final class Logger
 
     private function write(string $level, string $message, array $context): void
     {
-        $ts = gmdate('c');
+        $ts = date('c');
         $line = sprintf("[%s] %s %s", $ts, $level, $message);
         if ($context !== []) {
             $line .= ' ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -39,4 +39,3 @@ final class Logger
         file_put_contents($this->path, $line, FILE_APPEND | LOCK_EX);
     }
 }
-
