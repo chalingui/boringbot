@@ -92,8 +92,8 @@ final class PurchaseManager
 
             $this->logger->info('Buy filled; placing limit sell', [
                 'purchase_id' => $p['id'],
-                'qty' => $qty,
-                'avg_price' => $avgPrice,
+                'qty' => round($qty, 8),
+                'avg_price' => round($avgPrice, 8),
             ]);
 
             $targetPrice = $avgPrice * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
@@ -414,12 +414,12 @@ final class PurchaseManager
             return;
         }
 
-        $this->logger->info('Creating new purchase', [
-            'amount_usdt' => $this->dcaAmountUsdt,
-            'symbol' => $this->symbolTrade,
-            'sell_markup_pct' => $this->sellMarkupPct,
-            'dry_run' => $this->dryRun,
-        ]);
+            $this->logger->info('Creating new purchase', [
+                'amount_usdt' => $this->dcaAmountUsdt,
+                'symbol' => $this->symbolTrade,
+                'sell_markup_pct' => $this->sellMarkupPct,
+                'dry_run' => $this->dryRun,
+            ]);
 
         if ($this->dryRun) {
             $ticker = $this->bybit->tickerLastPrice($this->symbolTrade);
@@ -435,9 +435,9 @@ final class PurchaseManager
                 'amount_usdt' => $this->dcaAmountUsdt,
                 'symbol' => $this->symbolTrade,
                 'last_price' => $ticker,
-                'buy_price' => $buyPrice,
-                'buy_qty' => $buyQty,
-                'sell_target_price' => $targetPrice,
+                'buy_price' => round($buyPrice, 8),
+                'buy_qty' => round($buyQty, 8),
+                'sell_target_price' => round($targetPrice, 8),
                 'sell_markup_pct' => $this->sellMarkupPct,
             ]);
             return;

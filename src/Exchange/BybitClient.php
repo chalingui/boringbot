@@ -98,15 +98,21 @@ final class BybitClient
 
     public function createLimitSell(string $symbol, float $qtyBase, float $price): string
     {
-        [$qtyBase, $price] = $this->normalizeLimitOrder($symbol, $qtyBase, $price);
+        $info = $this->instrumentInfo($symbol);
+        [$qtyBase, $price] = $this->normalizeLimitOrder($info, $symbol, $qtyBase, $price);
+
+        $qtyDecimals = $this->decimalsFromStep((string)(($info['lotSizeFilter'] ?? [])['qtyStep'] ?? ''));
+        $tickDecimals = $this->decimalsFromStep((string)(($info['priceFilter'] ?? [])['tickSize'] ?? ''));
+        $priceDecimals = isset($info['priceScale']) ? (int)$info['priceScale'] : $tickDecimals;
+        $priceDecimals = max(0, min(10, $priceDecimals));
 
         $data = $this->request('POST', '/v5/order/create', [
             'category' => 'spot',
             'symbol' => $symbol,
             'side' => 'Sell',
             'orderType' => 'Limit',
-            'qty' => $this->formatNumber($qtyBase),
-            'price' => $this->formatNumber($price),
+            'qty' => $this->formatNumberLimited($qtyBase, $qtyDecimals),
+            'price' => $this->formatNumberLimited($price, $priceDecimals),
             'timeInForce' => 'GTC',
         ], true);
 
@@ -235,14 +241,14 @@ final class BybitClient
      * - qty is floored to step (never exceeds available)
      * - price is ceiled to tick (keeps target at or above requested price)
      */
-    private function normalizeLimitOrder(string $symbol, float $qtyBase, float $price): array
+    private function normalizeLimitOrder(array $info, string $symbol, float $qtyBase, float $price): array
     {
-        $info = $this->instrumentInfo($symbol);
         $lot = $info['lotSizeFilter'] ?? [];
         $pf = $info['priceFilter'] ?? [];
 
         $qtyStep = (string)($lot['qtyStep'] ?? '');
         $tickSize = (string)($pf['tickSize'] ?? '');
+        $priceScale = isset($info['priceScale']) ? (int)$info['priceScale'] : null;
         $minOrderQty = isset($lot['minOrderQty']) ? (float)$lot['minOrderQty'] : null;
         $minOrderAmt = isset($lot['minOrderAmt']) ? (float)$lot['minOrderAmt'] : null;
 
@@ -253,7 +259,12 @@ final class BybitClient
 
         $p = $price;
         if ($tickSize !== '' && (float)$tickSize > 0) {
-            $p = $this->ceilToStep($price, (float)$tickSize, $this->decimalsFromStep($tickSize));
+            $tickDecimals = $this->decimalsFromStep($tickSize);
+            $priceDecimals = $priceScale !== null ? $priceScale : $tickDecimals;
+            // Use enough decimals for correct stepping, then clamp to the configured scale.
+            $calcDecimals = max($tickDecimals, $priceDecimals);
+            $p = $this->ceilToStep($price, (float)$tickSize, $calcDecimals);
+            $p = round($p, max(0, min(10, $priceDecimals)));
         }
 
         if ($qty <= 0 || $p <= 0) {
@@ -312,5 +323,12 @@ final class BybitClient
     {
         $mult = ceil(($value - 1e-12) / $step);
         return round($mult * $step, $decimals);
+    }
+
+    private function formatNumberLimited(float $n, int $maxDecimals): string
+    {
+        $maxDecimals = max(0, min(10, $maxDecimals));
+        $s = rtrim(rtrim(number_format($n, $maxDecimals, '.', ''), '0'), '.');
+        return $s === '' ? '0' : $s;
     }
 }
