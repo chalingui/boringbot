@@ -139,48 +139,44 @@ if ($view === 'purchases') {
     $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
     echo '<div class="card">';
     echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
-    echo '<table><thead><tr>';
-    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy</th><th>Sell</th><th>Profit</th>';
+    echo '<div class="table-wrap"><table><thead><tr>';
+    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Buy Order</th><th>Sell Order</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Δ %</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
     foreach ($rows as $p) {
         $id = (int)$p['id'];
         $status = (string)$p['status'];
+        $targetPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
+        $deltaPx = ($lastPrice !== null && $targetPx !== null) ? ($targetPx - $lastPrice) : null; // USDT per ETH
+        $deltaPct = ($lastPrice !== null && $targetPx !== null && $lastPrice > 0) ? ((($targetPx / $lastPrice) - 1.0) * 100.0) : null;
+
         echo '<tr>';
         echo '<td><a href="/dashboard/?view=purchases#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '</td>';
-        echo '<td>';
-        echo h(number_format((float)$p['buy_usdt'], 2, '.', '')) . " USDT";
-        echo '<br><span class="muted">order=' . h(v($p['buy_order_id'] ?? null)) . '</span>';
-        echo '<br><span class="muted">filled_at=' . h(fmtDbDt($p['buy_filled_at'] ?? null)) . '</span>';
-        echo '<br><span class="muted">price=' . h(v($p['buy_price'] ?? null)) . ' qty=' . h(v($p['buy_qty'] ?? null)) . '</span>';
-        echo '</td>';
-        echo '<td>';
-        echo '<span class="muted">order=' . h(v($p['sell_order_id'] ?? null)) . '</span>';
-        echo '<br><span class="muted">target=' . h(v($p['sell_price'] ?? null)) . ' qty=' . h(v($p['sell_qty'] ?? null)) . '</span>';
-        echo '<br><span class="muted">filled_at=' . h(fmtDbDt($p['sell_filled_at'] ?? null)) . '</span>';
-        echo '<br>filled=' . h(v($p['sell_usdt'] ?? null)) . ' USDT';
-        if ($status === 'OPEN' && $lastPrice !== null && $lastPrice > 0 && $p['sell_price'] !== null && $p['sell_qty'] !== null) {
-            $target = (float)$p['sell_price'];
-            $qty = (float)$p['sell_qty'];
-            if ($target > 0 && $qty > 0) {
-                if ($lastPrice >= $target) {
-                    echo '<br><span class="pill OPEN">ready</span>';
-                } else {
-                    $missingTotal = ($target - $lastPrice) * $qty;
-                    $missingPct = (($target / $lastPrice) - 1.0) * 100.0;
-                    echo '<br><span class="muted">gap=' . h(number_format($missingPct, 2, '.', '')) . '% | ' . h(number_format($missingTotal, 2, '.', '')) . ' USDT</span>';
-                }
+        echo '<td>' . h(number_format((float)$p['buy_usdt'], 2, '.', '')) . '</td>';
+        echo '<td>' . h(v($p['buy_price'] ?? null)) . '</td>';
+        echo '<td>' . h(v($p['buy_qty'] ?? null)) . '</td>';
+        echo '<td><code>' . h(v($p['buy_order_id'] ?? null)) . '</code></td>';
+        echo '<td><code>' . h(v($p['sell_order_id'] ?? null)) . '</code></td>';
+        echo '<td>' . h(v($p['sell_price'] ?? null)) . '</td>';
+        echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
+        if ($deltaPx === null) {
+            echo '<td>—</td><td>—</td>';
+        } else {
+            if ($deltaPx <= 0) {
+                echo '<td><span class="pill OPEN">ready</span></td><td>0.00%</td>';
+            } else {
+                echo '<td>' . h(number_format($deltaPx, 2, '.', '')) . ' USDT/ETH</td>';
+                echo '<td>' . h($deltaPct === null ? '—' : number_format($deltaPct, 2, '.', '') . '%') . '</td>';
             }
         }
-        echo '</td>';
         echo '<td>';
         echo 'profit=' . h(v($p['profit_usdt'] ?? null)) . ' USDT';
         echo '<br><span class="muted">usdc=' . h(v($p['profit_usdc'] ?? null)) . '</span>';
         echo '</td>';
         echo '</tr>';
     }
-    echo '</tbody></table></div>';
+    echo '</tbody></table></div></div>';
     echo '<div class="muted" style="margin-top:8px">Nota: la compra pasa de BUYING→OPEN cuando el cron detecta el fill y coloca la LIMIT SELL.</div>';
     renderFooter();
     exit;
