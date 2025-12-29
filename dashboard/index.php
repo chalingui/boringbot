@@ -293,30 +293,8 @@ function renderMovementsTable(Database $db, int $limit = 50): void
     echo '</tbody></table></div>';
 }
 
-if ($view === 'purchases') {
-    $bybit = new BybitClient(
-        (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
-        '',
-        '',
-    );
-    $symbolTrade = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
-    $lastPrice = $bybit->tickerLastPrice($symbolTrade);
-    $priceFetchedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
-
-    $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
-    renderPurchasesTable($rows, $lastPrice, $symbolTrade, $priceFetchedAt);
-    echo '<div class="muted" style="margin-top:8px">Nota: la compra pasa de BUYING→OPEN cuando el cron detecta el fill y coloca la LIMIT SELL.</div>';
-    renderFooter();
-    exit;
-}
-
-if ($view === 'moves') {
-    renderMovementsTable($db, 300);
-    renderFooter();
-    exit;
-}
-
-if ($view === 'chart') {
+function renderChartCard(Database $db, array $cfg, string $interval = '15', int $limit = 400): void
+{
     $bybit = new BybitClient(
         (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
         '',
@@ -324,8 +302,6 @@ if ($view === 'chart') {
     );
     $symbol = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
 
-    $interval = (string)($_GET['interval'] ?? '15'); // minutes
-    $limit = (int)($_GET['limit'] ?? 400);
     if ($limit < 50) {
         $limit = 50;
     }
@@ -351,7 +327,6 @@ if ($view === 'chart') {
     if ($startDt === null) {
         $startDt = $nowUtc->sub(new DateInterval('P7D'));
     }
-    // Cap window to last 30d.
     $minStart = $nowUtc->sub(new DateInterval('P30D'));
     if ($startDt < $minStart) {
         $startDt = $minStart;
@@ -361,10 +336,13 @@ if ($view === 'chart') {
     $endMs = (int)($nowUtc->getTimestamp() * 1000);
 
     $series = $bybit->klines($symbol, $interval, $startMs, $endMs, $limit);
+
+    echo '<div class="card">';
+    echo '<div class="muted">Precio ETH vs tiempo</div>';
+
     if ($series === []) {
-        echo '<div class="card"><div class="muted">No hay datos de kline para ' . h($symbol) . '.</div></div>';
-        renderFooter();
-        exit;
+        echo '<div class="muted" style="margin-top:8px">No hay datos de kline para ' . h($symbol) . '.</div></div>';
+        return;
     }
 
     $prices = array_map(static fn(array $pt) => (float)$pt[1], $series);
@@ -415,23 +393,19 @@ if ($view === 'chart') {
 
     $palette = ['#6ea8ff', '#41d18b', '#ffcd57', '#ff6b6b', '#b388ff', '#4dd0e1', '#ff8fab', '#a3e635'];
 
-    echo '<div class="card">';
-    echo '<div class="muted" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+    echo '<div class="muted" style="margin-top:6px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
     echo '<div>Symbol: <code>' . h($symbol) . '</code> | interval: <code>' . h($interval) . '</code> | points: <code>' . h((string)count($series)) . '</code></div>';
     echo '<div>Window: <code>' . h((new DateTimeImmutable('@' . (int)($x0 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code> → <code>' . h((new DateTimeImmutable('@' . (int)($x1 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code></div>';
     echo '</div>';
 
     echo '<div class="table-wrap" style="margin-top:10px">';
     echo '<svg viewBox="0 0 ' . h((string)$w) . ' ' . h((string)$h) . '" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Price chart">';
-    // Background grid (Y lines)
     for ($i = 0; $i <= 4; $i++) {
         $yy = $pt + ($innerH / 4) * $i;
         echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="rgba(255,255,255,.06)" />';
     }
-    // Price line
     echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
 
-    // Overlays per purchase
     $i = 0;
     foreach ($purchases as $p) {
         $id = (int)$p['id'];
@@ -454,7 +428,6 @@ if ($view === 'chart') {
         $color = $palette[$i % count($palette)];
         $i++;
 
-        // Segment of price line from buy time to now (same series, recolored)
         $seg = [];
         foreach ($series as $ptRow) {
             if ((float)$ptRow[0] + 1 < $buyMs) {
@@ -466,27 +439,52 @@ if ($view === 'chart') {
             echo '<polyline fill="none" stroke="' . h($color) . '" stroke-width="2" opacity="0.85" points="' . h(implode(' ', $seg)) . '" />';
         }
 
-        // Target line
         if ($sellPrice !== null) {
             $yy = $sy($sellPrice);
             echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.8" />';
         }
 
-        // Buy point + label
         $cx = $sx($buyMs);
         $cy = $sy($buyPrice);
         echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '" />';
         echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
     }
 
-    // Y-axis labels
     echo '<text x="' . h((string)10) . '" y="' . h((string)($pt + 12)) . '" fill="rgba(255,255,255,.6)" font-size="12">' . h(number_format($maxY, 2, '.', '')) . '</text>';
     echo '<text x="' . h((string)10) . '" y="' . h((string)($pt + $innerH)) . '" fill="rgba(255,255,255,.6)" font-size="12">' . h(number_format($minY, 2, '.', '')) . '</text>';
 
     echo '</svg></div>';
-
-    echo '<div class="muted" style="margin-top:10px">Leyenda: línea azul = precio (close) | línea de color = evolución desde compra | línea punteada = target de venta.</div>';
+    echo '<div class="muted" style="margin-top:10px">Línea azul = precio | color = evolución desde compra | punteada = target de venta.</div>';
     echo '</div>';
+}
+
+if ($view === 'purchases') {
+    $bybit = new BybitClient(
+        (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
+        '',
+        '',
+    );
+    $symbolTrade = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
+    $lastPrice = $bybit->tickerLastPrice($symbolTrade);
+    $priceFetchedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+
+    $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
+    renderPurchasesTable($rows, $lastPrice, $symbolTrade, $priceFetchedAt);
+    echo '<div class="muted" style="margin-top:8px">Nota: la compra pasa de BUYING→OPEN cuando el cron detecta el fill y coloca la LIMIT SELL.</div>';
+    renderFooter();
+    exit;
+}
+
+if ($view === 'moves') {
+    renderMovementsTable($db, 300);
+    renderFooter();
+    exit;
+}
+
+if ($view === 'chart') {
+    $interval = (string)($_GET['interval'] ?? '15'); // minutes
+    $limit = (int)($_GET['limit'] ?? 400);
+    renderChartCard($db, $cfg, $interval, $limit);
 
     renderFooter();
     exit;
@@ -554,6 +552,8 @@ echo '<div class="item"><div class="muted">Sell markup</div><div style="font-siz
 echo '<div class="item"><div class="muted">Última actualización</div><div style="font-size:18px">' . h(ago($lastAny)) . '</div><div class="muted" style="margin-top:2px">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
 echo '</div>';
 echo '</div>';
+
+renderChartCard($db, $cfg, '15', 400);
 
 // Purchases box on home (same as Purchases view, limited rows).
 $bybitHome = new BybitClient(
