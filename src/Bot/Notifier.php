@@ -117,10 +117,11 @@ final class Notifier
 
     private function setMeta(string $k, string $v): void
     {
-        $this->db->exec(
-            'INSERT INTO meta(k, v) VALUES(:k, :v) ON CONFLICT(k) DO UPDATE SET v = :v2',
-            [':k' => $k, ':v' => $v, ':v2' => $v]
-        );
+        // Compatible with older SQLite versions (no UPSERT syntax).
+        $this->db->exec('INSERT OR REPLACE INTO meta(k, v) VALUES(:k, :v)', [
+            ':k' => $k,
+            ':v' => $v,
+        ]);
     }
 
     private function insertEvent(string $type, array $payload): void
@@ -134,4 +135,3 @@ final class Notifier
         );
     }
 }
-

@@ -557,10 +557,11 @@ final class PurchaseManager
 
     private function addBalance(string $asset, float $delta): void
     {
-        $this->db->exec(
-            'INSERT INTO balances(asset, amount) VALUES(:a, :d)
-             ON CONFLICT(asset) DO UPDATE SET amount = amount + :d2',
-            [':a' => $asset, ':d' => $delta, ':d2' => $delta]
-        );
+        // Compatible with older SQLite versions (no UPSERT syntax).
+        $this->db->exec('INSERT OR IGNORE INTO balances(asset, amount) VALUES(:a, 0)', [':a' => $asset]);
+        $this->db->exec('UPDATE balances SET amount = amount + :d WHERE asset = :a', [
+            ':a' => $asset,
+            ':d' => $delta,
+        ]);
     }
 }
