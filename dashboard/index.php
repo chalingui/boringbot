@@ -155,7 +155,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
     echo '<div class="card">';
     echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
     echo '<div class="table-wrap"><table><thead><tr>';
-    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Δ %</th><th>Profit</th>';
+    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Δ %</th><th>Progress</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
 
     foreach ($rows as $p) {
@@ -187,6 +187,25 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
             }
         }
 
+        // Progress bar from buy_price -> sell_price using last price.
+        $buyPx = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
+        $sellPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
+        $progress = null;
+        if ($lastPrice !== null && $buyPx !== null && $sellPx !== null && $sellPx > $buyPx) {
+            $progress = ($lastPrice - $buyPx) / ($sellPx - $buyPx);
+            if ($progress < 0) {
+                $progress = 0.0;
+            } elseif ($progress > 1) {
+                $progress = 1.0;
+            }
+        }
+        if ($progress === null) {
+            echo '<td>—</td>';
+        } else {
+            $pct = (int)round($progress * 100);
+            echo '<td><div class="bar" title="' . h((string)$pct) . '%"><span style="width:' . h((string)$pct) . '%"></span></div><div class="muted" style="margin-top:2px">' . h((string)$pct) . '%</div></td>';
+        }
+
         echo '<td>';
         echo 'profit=' . h(v($p['profit_usdt'] ?? null)) . ' USDT';
         echo '<br><span class="muted">usdc=' . h(v($p['profit_usdc'] ?? null)) . '</span>';
@@ -207,6 +226,24 @@ renderHeader(match ($view) {
 function eventIsNoise(string $type): bool
 {
     return in_array($type, ['RUN_START', 'RUN_FINISH', 'RECONCILE_START', 'RECONCILE_FINISH'], true);
+}
+
+function normalizePayloadForDisplay(mixed $value): mixed
+{
+    if (is_float($value)) {
+        return number_format($value, 8, '.', '');
+    }
+    if (is_int($value) || is_string($value) || $value === null || is_bool($value)) {
+        return $value;
+    }
+    if (is_array($value)) {
+        $out = [];
+        foreach ($value as $k => $v) {
+            $out[$k] = normalizePayloadForDisplay($v);
+        }
+        return $out;
+    }
+    return (string)$value;
 }
 
 function renderMovementsTable(Database $db, int $limit = 50): void
@@ -233,6 +270,7 @@ function renderMovementsTable(Database $db, int $limit = 50): void
         $payload = (string)$e['payload_json'];
         $decoded = json_decode($payload, true);
         if (is_array($decoded)) {
+            $decoded = normalizePayloadForDisplay($decoded);
             $payload = json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: (string)$e['payload_json'];
         }
         if (strlen($payload) > 240) {
@@ -351,7 +389,6 @@ $lastPriceHome = $bybitHome->tickerLastPrice($symbolTradeHome);
 $priceFetchedAtHome = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 $rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
 renderPurchasesTable($rowsHome, $lastPriceHome, $symbolTradeHome, $priceFetchedAtHome);
-renderMovementsTable($db, 120);
 echo '</div>';
 
 renderFooter();
