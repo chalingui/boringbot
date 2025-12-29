@@ -34,6 +34,40 @@ final class BybitClient
         return (float)$list[0]['lastPrice'];
     }
 
+    /**
+     * Returns kline close prices as [timestampMs, closeFloat] ascending by time.
+     * Interval for Bybit v5 spot is string minutes (e.g. "1", "3", "5", "15", "60", "240", "D").
+     */
+    public function klines(string $symbol, string $interval, int $startMs, int $endMs, int $limit = 200): array
+    {
+        $data = $this->request('GET', '/v5/market/kline', [
+            'category' => 'spot',
+            'symbol' => $symbol,
+            'interval' => $interval,
+            'start' => (string)$startMs,
+            'end' => (string)$endMs,
+            'limit' => (string)$limit,
+        ], false);
+
+        $list = $data['result']['list'] ?? [];
+        if (!is_array($list)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($list as $row) {
+            if (!is_array($row) || count($row) < 5) {
+                continue;
+            }
+            $ts = (int)$row[0];
+            $close = (float)$row[4];
+            $out[] = [$ts, $close];
+        }
+
+        usort($out, static fn(array $a, array $b) => $a[0] <=> $b[0]);
+        return $out;
+    }
+
     public function walletBalance(string $coin): ?float
     {
         try {

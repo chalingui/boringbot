@@ -46,6 +46,7 @@ function renderHeader(string $title): void
     echo '<div class="nav">';
     echo '<a href="/dashboard/">Dashboard</a>';
     echo '<a href="/dashboard/?view=moves">Movimientos</a>';
+    echo '<a href="/dashboard/?view=chart">Gráfico</a>';
     echo '<a href="/dashboard/?view=logs">Logs</a>';
     echo '</div></div>';
 }

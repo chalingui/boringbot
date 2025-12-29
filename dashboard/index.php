@@ -219,6 +219,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
 renderHeader(match ($view) {
     'purchases' => 'Compras',
     'moves' => 'Movimientos',
+    'chart' => 'Gráfico',
     'logs' => 'Logs',
     default => 'Dashboard',
 });
@@ -311,6 +312,182 @@ if ($view === 'purchases') {
 
 if ($view === 'moves') {
     renderMovementsTable($db, 300);
+    renderFooter();
+    exit;
+}
+
+if ($view === 'chart') {
+    $bybit = new BybitClient(
+        (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
+        '',
+        '',
+    );
+    $symbol = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
+
+    $interval = (string)($_GET['interval'] ?? '15'); // minutes
+    $limit = (int)($_GET['limit'] ?? 400);
+    if ($limit < 50) {
+        $limit = 50;
+    }
+    if ($limit > 1000) {
+        $limit = 1000;
+    }
+
+    $purchases = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 12');
+    $startDt = null;
+    foreach ($purchases as $p) {
+        $t = (string)($p['buy_filled_at'] ?? $p['created_at'] ?? '');
+        if ($t === '') {
+            continue;
+        }
+        try {
+            $dt = new DateTimeImmutable($t . ' UTC');
+            $startDt = $startDt === null ? $dt : ($dt < $startDt ? $dt : $startDt);
+        } catch (Throwable) {
+            // ignore
+        }
+    }
+    $nowUtc = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    if ($startDt === null) {
+        $startDt = $nowUtc->sub(new DateInterval('P7D'));
+    }
+    // Cap window to last 30d.
+    $minStart = $nowUtc->sub(new DateInterval('P30D'));
+    if ($startDt < $minStart) {
+        $startDt = $minStart;
+    }
+
+    $startMs = (int)($startDt->getTimestamp() * 1000);
+    $endMs = (int)($nowUtc->getTimestamp() * 1000);
+
+    $series = $bybit->klines($symbol, $interval, $startMs, $endMs, $limit);
+    if ($series === []) {
+        echo '<div class="card"><div class="muted">No hay datos de kline para ' . h($symbol) . '.</div></div>';
+        renderFooter();
+        exit;
+    }
+
+    $prices = array_map(static fn(array $pt) => (float)$pt[1], $series);
+    $minY = min($prices);
+    $maxY = max($prices);
+
+    foreach ($purchases as $p) {
+        if ($p['buy_price'] !== null) {
+            $minY = min($minY, (float)$p['buy_price']);
+            $maxY = max($maxY, (float)$p['buy_price']);
+        }
+        if ($p['sell_price'] !== null) {
+            $minY = min($minY, (float)$p['sell_price']);
+            $maxY = max($maxY, (float)$p['sell_price']);
+        }
+    }
+    $pad = max(1.0, ($maxY - $minY) * 0.06);
+    $minY -= $pad;
+    $maxY += $pad;
+
+    $w = 1100;
+    $h = 420;
+    $pl = 60;
+    $pr = 20;
+    $pt = 20;
+    $pb = 50;
+    $innerW = $w - $pl - $pr;
+    $innerH = $h - $pt - $pb;
+
+    $x0 = (float)$series[0][0];
+    $x1 = (float)$series[count($series) - 1][0];
+    if ($x1 <= $x0) {
+        $x1 = $x0 + 1;
+    }
+
+    $sx = static function (float $ts) use ($x0, $x1, $pl, $innerW): float {
+        return $pl + (($ts - $x0) / ($x1 - $x0)) * $innerW;
+    };
+    $sy = static function (float $price) use ($minY, $maxY, $pt, $innerH): float {
+        return $pt + ($maxY - $price) / ($maxY - $minY) * $innerH;
+    };
+
+    $points = [];
+    foreach ($series as $ptRow) {
+        $points[] = $sx((float)$ptRow[0]) . ',' . $sy((float)$ptRow[1]);
+    }
+    $priceLine = implode(' ', $points);
+
+    $palette = ['#6ea8ff', '#41d18b', '#ffcd57', '#ff6b6b', '#b388ff', '#4dd0e1', '#ff8fab', '#a3e635'];
+
+    echo '<div class="card">';
+    echo '<div class="muted" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+    echo '<div>Symbol: <code>' . h($symbol) . '</code> | interval: <code>' . h($interval) . '</code> | points: <code>' . h((string)count($series)) . '</code></div>';
+    echo '<div>Window: <code>' . h((new DateTimeImmutable('@' . (int)($x0 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code> → <code>' . h((new DateTimeImmutable('@' . (int)($x1 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code></div>';
+    echo '</div>';
+
+    echo '<div class="table-wrap" style="margin-top:10px">';
+    echo '<svg viewBox="0 0 ' . h((string)$w) . ' ' . h((string)$h) . '" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Price chart">';
+    // Background grid (Y lines)
+    for ($i = 0; $i <= 4; $i++) {
+        $yy = $pt + ($innerH / 4) * $i;
+        echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="rgba(255,255,255,.06)" />';
+    }
+    // Price line
+    echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
+
+    // Overlays per purchase
+    $i = 0;
+    foreach ($purchases as $p) {
+        $id = (int)$p['id'];
+        $buyPrice = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
+        $sellPrice = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
+        $tStr = (string)($p['buy_filled_at'] ?? $p['created_at'] ?? '');
+        if ($tStr === '' || $buyPrice === null) {
+            continue;
+        }
+        try {
+            $buyDt = new DateTimeImmutable($tStr . ' UTC');
+        } catch (Throwable) {
+            continue;
+        }
+        $buyMs = (float)($buyDt->getTimestamp() * 1000);
+        if ($buyMs < $x0 || $buyMs > $x1) {
+            continue;
+        }
+
+        $color = $palette[$i % count($palette)];
+        $i++;
+
+        // Segment of price line from buy time to now (same series, recolored)
+        $seg = [];
+        foreach ($series as $ptRow) {
+            if ((float)$ptRow[0] + 1 < $buyMs) {
+                continue;
+            }
+            $seg[] = $sx((float)$ptRow[0]) . ',' . $sy((float)$ptRow[1]);
+        }
+        if (count($seg) >= 2) {
+            echo '<polyline fill="none" stroke="' . h($color) . '" stroke-width="2" opacity="0.85" points="' . h(implode(' ', $seg)) . '" />';
+        }
+
+        // Target line
+        if ($sellPrice !== null) {
+            $yy = $sy($sellPrice);
+            echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.8" />';
+        }
+
+        // Buy point + label
+        $cx = $sx($buyMs);
+        $cy = $sy($buyPrice);
+        echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '" />';
+        echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
+    }
+
+    // Y-axis labels
+    echo '<text x="' . h((string)10) . '" y="' . h((string)($pt + 12)) . '" fill="rgba(255,255,255,.6)" font-size="12">' . h(number_format($maxY, 2, '.', '')) . '</text>';
+    echo '<text x="' . h((string)10) . '" y="' . h((string)($pt + $innerH)) . '" fill="rgba(255,255,255,.6)" font-size="12">' . h(number_format($minY, 2, '.', '')) . '</text>';
+
+    echo '</svg></div>';
+
+    echo '<div class="muted" style="margin-top:10px">Leyenda: línea azul = precio (close) | línea de color = evolución desde compra | línea punteada = target de venta.</div>';
+    echo '</div>';
+
     renderFooter();
     exit;
 }
