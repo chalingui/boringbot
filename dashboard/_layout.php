@@ -43,8 +43,7 @@ function renderHeader(string $title): void
     echo '<div class="top"><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div>';
     echo '<div class="nav">';
     echo '<a href="/dashboard/">Dashboard</a>';
-    echo '<a href="/dashboard/?view=purchases">Compras</a>';
-    echo '<a href="/dashboard/?view=events">Eventos</a>';
+    echo '<a href="/dashboard/?view=moves">Movimientos</a>';
     echo '<a href="/dashboard/?view=logs">Logs</a>';
     echo '</div></div>';
 }

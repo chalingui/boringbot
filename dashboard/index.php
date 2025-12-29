@@ -14,6 +14,10 @@ $db = new Database($cfg['db_path']);
 $db->migrateFromFile($root . '/db/schema.sql');
 
 $view = (string)($_GET['view'] ?? 'home');
+// Backward-compatible alias (old tab name).
+if ($view === 'events') {
+    $view = 'moves';
+}
 
 function tailFile(string $path, int $maxLines = 200, bool $newestFirst = false): string
 {
@@ -195,10 +199,60 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
 
 renderHeader(match ($view) {
     'purchases' => 'Compras',
-    'events' => 'Eventos',
+    'moves' => 'Movimientos',
     'logs' => 'Logs',
     default => 'Dashboard',
 });
+
+function eventIsNoise(string $type): bool
+{
+    return in_array($type, ['RUN_START', 'RUN_FINISH', 'RECONCILE_START', 'RECONCILE_FINISH'], true);
+}
+
+function renderMovementsTable(Database $db, int $limit = 50): void
+{
+    $showAll = isset($_GET['all']) && $_GET['all'] === '1';
+    $rows = $db->fetchAll('SELECT id, created_at, type, payload_json FROM events_log ORDER BY id DESC LIMIT ' . (int)$limit);
+
+    echo '<div class="muted" style="margin-bottom:8px">';
+    echo $showAll
+        ? '<a href="/dashboard/?view=moves">Ocultar eventos de tick</a>'
+        : '<a href="/dashboard/?view=moves&all=1">Mostrar eventos de tick (RUN/RECONCILE)</a>';
+    echo '</div>';
+
+    echo '<div class="card"><div class="muted">Últimos movimientos</div>';
+    echo '<table><thead><tr><th>When</th><th>Type</th><th>Detalle</th></tr></thead><tbody>';
+
+    $shown = 0;
+    foreach ($rows as $e) {
+        $type = (string)$e['type'];
+        if (!$showAll && eventIsNoise($type)) {
+            continue;
+        }
+
+        $payload = (string)$e['payload_json'];
+        $decoded = json_decode($payload, true);
+        if (is_array($decoded)) {
+            $payload = json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: (string)$e['payload_json'];
+        }
+        if (strlen($payload) > 240) {
+            $payload = substr($payload, 0, 240) . '…';
+        }
+
+        echo '<tr>';
+        echo '<td>' . h(fmtDbDt((string)$e['created_at'])) . '</td>';
+        echo '<td><code>' . h($type) . '</code></td>';
+        echo '<td><code>' . h($payload) . '</code></td>';
+        echo '</tr>';
+
+        $shown++;
+        if ($shown >= 200) {
+            break;
+        }
+    }
+
+    echo '</tbody></table></div>';
+}
 
 if ($view === 'purchases') {
     $bybit = new BybitClient(
@@ -217,43 +271,8 @@ if ($view === 'purchases') {
     exit;
 }
 
-if ($view === 'events') {
-    $showAll = isset($_GET['all']) && $_GET['all'] === '1';
-    $noise = ['RUN_START', 'RUN_FINISH', 'RECONCILE_START', 'RECONCILE_FINISH'];
-    $sql = 'SELECT id, created_at, type, payload_json FROM events_log ';
-    $params = [];
-    if (!$showAll) {
-        $placeholders = [];
-        foreach ($noise as $i => $t) {
-            $ph = ':t' . $i;
-            $placeholders[] = $ph;
-            $params[$ph] = $t;
-        }
-        $sql .= 'WHERE type NOT IN (' . implode(',', $placeholders) . ') ';
-    }
-    $sql .= 'ORDER BY id DESC LIMIT 200';
-    $rows = $db->fetchAll($sql, $params);
-
-    echo '<div class="muted" style="margin-bottom:8px">';
-    echo $showAll
-        ? '<a href="/dashboard/?view=events">Ocultar eventos de tick</a>'
-        : '<a href="/dashboard/?view=events&all=1">Mostrar eventos de tick (RUN/RECONCILE)</a>';
-    echo '</div>';
-    echo '<div class="card"><table><thead><tr><th>ID</th><th>Created</th><th>Type</th><th>Payload</th></tr></thead><tbody>';
-    foreach ($rows as $e) {
-        $payload = (string)$e['payload_json'];
-        $decoded = json_decode($payload, true);
-        if (is_array($decoded)) {
-            $payload = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: (string)$e['payload_json'];
-        }
-        echo '<tr>';
-        echo '<td>' . h((string)$e['id']) . '</td>';
-        echo '<td>' . h(fmtDbDt((string)$e['created_at'])) . '</td>';
-        echo '<td><code>' . h((string)$e['type']) . '</code></td>';
-        echo '<td><pre style="margin:0">' . h($payload) . '</pre></td>';
-        echo '</tr>';
-    }
-    echo '</tbody></table></div>';
+if ($view === 'moves') {
+    renderMovementsTable($db, 300);
     renderFooter();
     exit;
 }
@@ -332,6 +351,7 @@ $lastPriceHome = $bybitHome->tickerLastPrice($symbolTradeHome);
 $priceFetchedAtHome = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 $rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
 renderPurchasesTable($rowsHome, $lastPriceHome, $symbolTradeHome, $priceFetchedAtHome);
+renderMovementsTable($db, 120);
 echo '</div>';
 
 renderFooter();
