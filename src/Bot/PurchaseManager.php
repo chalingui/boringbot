@@ -90,16 +90,27 @@ final class PurchaseManager
                 continue;
             }
 
+            // Some accounts pay spot fees in base asset (e.g., ETH). If so, the sellable qty is net of fees.
+            $feeCurrency = (string)($order['feeCurrency'] ?? '');
+            $fee = isset($order['cumExecFee']) ? (float)$order['cumExecFee'] : 0.0;
+            $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+            $netQty = $qty;
+            if ($fee > 0 && $feeCurrency !== '' && $baseAsset !== '' && $feeCurrency === $baseAsset) {
+                $netQty = max(0.0, $qty - $fee);
+            }
+
             $this->logger->info('Buy filled; placing limit sell', [
                 'purchase_id' => $p['id'],
-                'qty' => round($qty, 8),
+                'qty' => round($netQty, 8),
                 'avg_price' => round($avgPrice, 8),
+                'fee' => round($fee, 8),
+                'fee_currency' => $feeCurrency,
             ]);
 
             $targetPrice = $avgPrice * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
             $sellOrderId = null;
             try {
-                $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $qty, $targetPrice);
+                $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $netQty, $targetPrice);
             } catch (Throwable $e) {
                 $this->logger->error('Failed to place limit sell; will retry', [
                     'purchase_id' => $p['id'],
@@ -121,20 +132,22 @@ final class PurchaseManager
                      WHERE id = :id',
                     [
                         ':bp' => $avgPrice,
-                        ':bq' => $qty,
+                        ':bq' => $netQty,
                         ':so' => $sellOrderId,
                         ':sp' => $sellOrderId === null ? null : $targetPrice,
-                        ':sq' => $sellOrderId === null ? null : $qty,
+                        ':sq' => $sellOrderId === null ? null : $netQty,
                         ':st' => $sellOrderId === null ? self::STATUS_HOLDING : self::STATUS_OPEN,
                         ':id' => $p['id'],
                     ]
                 );
-                $this->addBalance('ETH', $qty);
+                $this->addBalance('ETH', $netQty);
                 $this->insertEvent($sellOrderId === null ? 'BUY_FILLED_SELL_FAILED' : 'BUY_FILLED_SELL_PLACED', [
                     'purchase_id' => (int)$p['id'],
                     'buy_order_id' => (string)$p['buy_order_id'],
-                    'buy_qty' => $qty,
+                    'buy_qty' => $netQty,
                     'buy_price' => $avgPrice,
+                    'buy_fee' => $fee,
+                    'buy_fee_currency' => $feeCurrency,
                     'sell_order_id' => $sellOrderId,
                     'sell_price' => $targetPrice,
                 ]);
@@ -162,6 +175,43 @@ final class PurchaseManager
             if ($qty <= 0 || $price <= 0) {
                 $this->logger->warn('HOLDING purchase missing buy_qty/buy_price', ['purchase_id' => $p['id']]);
                 continue;
+            }
+
+            // If fees were taken in base asset, available balance may be slightly lower than recorded qty.
+            $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+            if ($baseAsset !== '') {
+                $avail = $this->bybit->walletBalance($baseAsset);
+                if (is_float($avail) && $avail >= 0 && $avail + 1e-12 < $qty) {
+                    $this->logger->warn('Adjusting HOLDING qty to available balance (likely fees)', [
+                        'purchase_id' => $p['id'],
+                        'recorded_qty' => round($qty, 8),
+                        'available' => round($avail, 8),
+                        'asset' => $baseAsset,
+                    ]);
+                    $diff = $qty - $avail;
+                    $qty = $avail;
+                    try {
+                        $this->db->begin();
+                        $this->db->exec('UPDATE purchases SET buy_qty = :q WHERE id = :id', [
+                            ':q' => $qty,
+                            ':id' => $p['id'],
+                        ]);
+                        $this->addBalance('ETH', -$diff);
+                        $this->insertEvent('BUY_QTY_ADJUSTED', [
+                            'purchase_id' => (int)$p['id'],
+                            'diff' => $diff,
+                            'new_buy_qty' => $qty,
+                            'reason' => 'available_balance',
+                        ]);
+                        $this->db->commit();
+                    } catch (Throwable $e) {
+                        $this->db->rollBack();
+                        throw $e;
+                    }
+                    if ($qty <= 0) {
+                        continue;
+                    }
+                }
             }
 
             $targetPrice = $price * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
@@ -537,5 +587,14 @@ final class PurchaseManager
             ':a' => $asset,
             ':d' => $delta,
         ]);
+    }
+
+    private function baseAssetFromSymbol(string $symbol): string
+    {
+        // This bot is designed for ETH/USDT on Bybit Spot (symbol like ETHUSDT).
+        if (str_ends_with($symbol, 'USDT')) {
+            return substr($symbol, 0, -4);
+        }
+        return '';
     }
 }
