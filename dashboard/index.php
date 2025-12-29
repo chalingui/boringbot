@@ -441,8 +441,13 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
 
         if ($sellPrice !== null) {
             $yy = $sy($sellPrice);
-            echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.8" />';
+            // Sell target line (solid).
+            echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.6" opacity="0.85" />';
         }
+
+        // Buy price reference (very subtle).
+        $by = $sy($buyPrice);
+        echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$by) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$by) . '" stroke="' . h($color) . '" stroke-width="1" opacity="0.18" />';
 
         $cx = $sx($buyMs);
         $cy = $sy($buyPrice);
