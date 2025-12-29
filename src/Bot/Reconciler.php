@@ -29,16 +29,16 @@ final class Reconciler
         $delta = $bybitUsdt - $bot;
 
         $this->logger->info('Reconcile fetched Bybit balance', [
-            'bybit_usdt' => $bybitUsdt,
-            'bot_usdt' => $bot,
-            'delta' => $delta,
+            'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
+            'bot_usdt' => number_format($bot, 8, '.', ''),
+            'delta' => number_format(max(0.0, $delta), 8, '.', ''),
             'dry_run' => $this->dryRun,
         ]);
 
         if ($delta <= 0) {
             $this->insertEvent('RECONCILE', [
-                'bybit_usdt' => $bybitUsdt,
-                'bot_usdt' => $bot,
+                'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
+                'bot_usdt' => number_format($bot, 8, '.', ''),
                 'delta' => 0,
                 'note' => 'No positive delta; no update.',
                 'dry_run' => $this->dryRun,
@@ -48,9 +48,9 @@ final class Reconciler
 
         if ($this->dryRun) {
             $this->insertEvent('RECONCILE', [
-                'bybit_usdt' => $bybitUsdt,
-                'bot_usdt' => $bot,
-                'delta' => $delta,
+                'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
+                'bot_usdt' => number_format($bot, 8, '.', ''),
+                'delta' => number_format($delta, 8, '.', ''),
                 'note' => 'Dry-run; would increase balances.USDT.',
                 'dry_run' => true,
             ]);
@@ -61,10 +61,10 @@ final class Reconciler
             $this->db->begin();
             $this->addBalance('USDT', $delta);
             $this->insertEvent('RECONCILE', [
-                'bybit_usdt' => $bybitUsdt,
-                'bot_usdt' => $bot,
-                'delta' => $delta,
-                'new_bot_usdt' => $bot + $delta,
+                'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
+                'bot_usdt' => number_format($bot, 8, '.', ''),
+                'delta' => number_format($delta, 8, '.', ''),
+                'new_bot_usdt' => number_format($bot + $delta, 8, '.', ''),
                 'dry_run' => false,
             ]);
             $this->db->commit();
