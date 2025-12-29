@@ -95,3 +95,6 @@ Muestra:
 - `bin/reconcile.php` — reconciliación USDT (depósitos)
 - `bin/status.php` — estado y detalle
 - `src/Exchange/BybitClient.php` — cliente Bybit v5 (Spot)
+
+## Deploy en cPanel (nota)
+Si clonás el repo dentro de `public_html`, bloqueá acceso web a `src/`, `bin/`, `config/`, `db/`, `logs/`, `storage/` (incluye `.env`). Este repo incluye `.htaccess` para eso; aun así, lo ideal es apuntar el DocumentRoot a otra carpeta.

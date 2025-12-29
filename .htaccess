@@ -1,0 +1,10 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Block direct access to sensitive folders/files if the repo lives under public_html.
+  RewriteRule (^|/)\. - [F,L]
+  RewriteRule ^(src|bin|config|db|logs|storage)/ - [F,L]
+</IfModule>
+
