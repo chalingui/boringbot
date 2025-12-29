@@ -101,7 +101,12 @@ final class BybitClient
         $info = $this->instrumentInfo($symbol);
         [$qtyBase, $price] = $this->normalizeLimitOrder($info, $symbol, $qtyBase, $price);
 
-        $qtyStepStr = (string)(($info['lotSizeFilter'] ?? [])['qtyStep'] ?? '');
+        $lot = $info['lotSizeFilter'] ?? [];
+        $qtyStepStr = (string)($lot['qtyStep'] ?? '');
+        // Spot sometimes provides basePrecision instead of qtyStep.
+        if ($qtyStepStr === '') {
+            $qtyStepStr = (string)($lot['basePrecision'] ?? '');
+        }
         $tickSizeStr = (string)(($info['priceFilter'] ?? [])['tickSize'] ?? '');
         $qtyDecimals = $this->decimalsForStep($qtyStepStr);
         $tickDecimals = $this->decimalsForStep($tickSizeStr);
@@ -130,6 +135,7 @@ final class BybitClient
                 'qty' => $qtyStr,
                 'price' => $priceStr,
                 'qtyStep' => $qtyStepStr,
+                'basePrecision' => (string)($lot['basePrecision'] ?? ''),
                 'tickSize' => $tickSizeStr,
                 'priceScale' => $priceScale,
             ];
@@ -272,6 +278,9 @@ final class BybitClient
         $pf = $info['priceFilter'] ?? [];
 
         $qtyStep = (string)($lot['qtyStep'] ?? '');
+        if ($qtyStep === '') {
+            $qtyStep = (string)($lot['basePrecision'] ?? '');
+        }
         $tickSize = (string)($pf['tickSize'] ?? '');
         $priceScale = isset($info['priceScale']) ? (int)$info['priceScale'] : null;
         $minOrderQty = isset($lot['minOrderQty']) ? (float)$lot['minOrderQty'] : null;
