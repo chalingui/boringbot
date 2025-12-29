@@ -14,7 +14,7 @@ $db->migrateFromFile($root . '/db/schema.sql');
 
 $view = (string)($_GET['view'] ?? 'home');
 
-function tailFile(string $path, int $maxLines = 200): string
+function tailFile(string $path, int $maxLines = 200, bool $newestFirst = false): string
 {
     if (!is_file($path)) {
         return "File not found: {$path}\n";
@@ -48,6 +48,9 @@ function tailFile(string $path, int $maxLines = 200): string
     }
     fclose($fh);
     $lines = array_reverse($lines);
+    if ($newestFirst) {
+        $lines = array_reverse($lines);
+    }
     return trim(implode("\n", $lines)) . "\n";
 }
 
@@ -114,9 +117,9 @@ if ($view === 'logs') {
     $reconcilePath = $root . '/logs/reconcile.log';
 
     echo '<div class="grid">';
-    echo '<div class="card col6"><div class="muted">boringbot.log</div><pre>' . h(tailFile($logPath, 250)) . '</pre></div>';
-    echo '<div class="card col6"><div class="muted">cron.log</div><pre>' . h(tailFile($cronPath, 120)) . '</pre></div>';
-    echo '<div class="card col6"><div class="muted">reconcile.log</div><pre>' . h(tailFile($reconcilePath, 120)) . '</pre></div>';
+    echo '<div class="card"><div class="muted">boringbot.log (newest first)</div><pre>' . h(tailFile($logPath, 250, true)) . '</pre></div>';
+    echo '<div class="card"><div class="muted">cron.log (newest first)</div><pre>' . h(tailFile($cronPath, 120, true)) . '</pre></div>';
+    echo '<div class="card"><div class="muted">reconcile.log (newest first)</div><pre>' . h(tailFile($reconcilePath, 120, true)) . '</pre></div>';
     echo '</div>';
     renderFooter();
     exit;
@@ -141,8 +144,8 @@ echo '<div class="item"><div class="muted">Activas</div><div style="font-size:18
 echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:18px">' . h((string)($sold['c'] ?? '0')) . '</div></div>';
 echo '<div class="item"><div class="muted">Trade symbol</div><div style="font-size:18px">' . h((string)($cfg['symbols']['trade'] ?? '')) . '</div></div>';
 echo '<div class="item"><div class="muted">DCA</div><div style="font-size:18px">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
+echo '<div class="item"><div class="muted">Sell markup</div><div style="font-size:18px">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
 echo '</div>';
-echo '<div class="muted" style="margin-top:8px">DB: ' . h((string)$cfg['db_path']) . '</div>';
 echo '</div>';
 
 echo '<div class="card"><div class="muted">Últimos eventos</div><table><thead><tr><th>When</th><th>Type</th><th>Payload</th></tr></thead><tbody>';
@@ -165,4 +168,3 @@ echo '</tbody></table></div>';
 echo '</div>';
 
 renderFooter();
-
