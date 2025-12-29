@@ -105,18 +105,41 @@ final class BybitClient
         $tickSizeStr = (string)(($info['priceFilter'] ?? [])['tickSize'] ?? '');
         $qtyDecimals = $this->decimalsForStep($qtyStepStr);
         $tickDecimals = $this->decimalsForStep($tickSizeStr);
-        $priceDecimals = isset($info['priceScale']) ? (int)$info['priceScale'] : $tickDecimals;
+        $priceScale = isset($info['priceScale']) ? (int)$info['priceScale'] : null;
+        // Never format/round to fewer decimals than tick requires.
+        $priceDecimals = max($tickDecimals, $priceScale ?? $tickDecimals);
         $priceDecimals = max(0, min(10, $priceDecimals));
+        $qtyDecimals = max(0, min(10, $qtyDecimals));
 
-        $data = $this->request('POST', '/v5/order/create', [
-            'category' => 'spot',
-            'symbol' => $symbol,
-            'side' => 'Sell',
-            'orderType' => 'Limit',
-            'qty' => $this->formatNumberLimited($qtyBase, $qtyDecimals),
-            'price' => $this->formatNumberLimited($price, $priceDecimals),
-            'timeInForce' => 'GTC',
-        ], true);
+        $qtyStr = $this->formatNumberLimited($qtyBase, $qtyDecimals);
+        $priceStr = $this->formatNumberLimited($price, $priceDecimals);
+
+        try {
+            $data = $this->request('POST', '/v5/order/create', [
+                'category' => 'spot',
+                'symbol' => $symbol,
+                'side' => 'Sell',
+                'orderType' => 'Limit',
+                'qty' => $qtyStr,
+                'price' => $priceStr,
+                'timeInForce' => 'GTC',
+            ], true);
+        } catch (BybitApiException $e) {
+            $ctx = [
+                'symbol' => $symbol,
+                'qty' => $qtyStr,
+                'price' => $priceStr,
+                'qtyStep' => $qtyStepStr,
+                'tickSize' => $tickSizeStr,
+                'priceScale' => $priceScale,
+            ];
+            throw new BybitApiException(
+                httpCode: $e->httpCode,
+                retCode: $e->retCode,
+                retMsg: $e->retMsg,
+                message: $e->getMessage() . ' ' . json_encode($ctx, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            );
+        }
 
         $orderId = $data['result']['orderId'] ?? null;
         if (!is_string($orderId) || $orderId === '') {
@@ -262,7 +285,7 @@ final class BybitClient
         $p = $price;
         if ($tickSize !== '' && (float)$tickSize > 0) {
             $tickDecimals = $this->decimalsForStep($tickSize);
-            $priceDecimals = $priceScale !== null ? $priceScale : $tickDecimals;
+            $priceDecimals = max($tickDecimals, $priceScale ?? $tickDecimals);
             // Use enough decimals for correct stepping, then clamp to the configured scale.
             $calcDecimals = max($tickDecimals, $priceDecimals);
             $p = $this->ceilToStep($price, (float)$tickSize, $calcDecimals);
