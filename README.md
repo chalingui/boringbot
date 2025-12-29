@@ -98,3 +98,10 @@ Muestra:
 
 ## Deploy en cPanel (nota)
 Si clonás el repo dentro de `public_html`, bloqueá acceso web a `src/`, `bin/`, `config/`, `db/`, `logs/`, `storage/` (incluye `.env`). Este repo incluye `.htaccess` para eso; aun así, lo ideal es apuntar el DocumentRoot a otra carpeta.
+
+## Dashboard (opcional)
+Hay un dashboard simple en `/dashboard/` (solo lectura) con HTTP Basic Auth.
+
+Configurar en `.env`:
+- `DASHBOARD_USER` (default `admin`)
+- `DASHBOARD_PASS` (obligatorio)
