@@ -1,3 +1,4 @@
+---
 deployment:
   tasks:
     # Set this to your document root (or desired deploy path).
