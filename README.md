@@ -24,6 +24,7 @@ Configurar en `.env` (no commitear credenciales):
 - `NOTIFY_ENABLED=1`
 - `NOTIFY_EMAIL_TO=tu@email.com`
 - `NOTIFY_EMAIL_FROM=postmaster@tu-dominio.com` (o el usuario SMTP)
+- `NOTIFY_NO_FUNDS_LEAD_HOURS=48` (aviso si falta USDT dentro de esa ventana antes del próximo DCA)
 - `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_ENCRYPTION` (`starttls`), `SMTP_USER`, `SMTP_PASS`
 
 Test manual:
@@ -36,6 +37,7 @@ Eventos notificados:
 - Compra creada (cuando se coloca la orden de compra real)
 - Venta ejecutada (cuando se completa la venta y la conversión de profit a USDC)
 - Sin USDT suficiente para comprar (con cooldown `NOTIFY_COOLDOWN_MINUTES`)
+- Sin USDT suficiente para el próximo DCA (aviso “anticipado” dentro de `NOTIFY_NO_FUNDS_LEAD_HOURS`)
 
 3) Crea carpetas si hace falta (logs/lock/db se crean solos, pero recomendado):
 ```bash

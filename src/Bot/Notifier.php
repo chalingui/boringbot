@@ -7,6 +7,7 @@ use BoringBot\DB\Database;
 use BoringBot\Utils\Logger;
 use BoringBot\Utils\Mailer;
 use DateTimeImmutable;
+use DateTimeZone;
 use Throwable;
 
 final class Notifier
@@ -60,10 +61,38 @@ final class Notifier
         );
     }
 
-    private function sendEvent(string $key, string $subject, string $body): void
+    public function insufficientFundsLead(float $needUsdt, float $haveUsdt, DateTimeImmutable $dueAtUtc, int $leadHours): void
+    {
+        $key = 'no_funds_lead';
+
+        $dueAtUtc = $dueAtUtc->setTimezone(new DateTimeZone('UTC'));
+        $dueMarker = $dueAtUtc->format(DATE_ATOM);
+        $lastDueMarker = $this->getMeta('notify_no_funds_lead_due_at');
+        if (is_string($lastDueMarker) && $lastDueMarker !== '' && $lastDueMarker === $dueMarker) {
+            return;
+        }
+
+        if (!$this->shouldSendCooldown($key)) {
+            return;
+        }
+
+        $localTz = new DateTimeZone(date_default_timezone_get());
+        $dueAtLocal = $dueAtUtc->setTimezone($localTz)->format('Y-m-d H:i:s');
+
+        $ok = $this->sendEvent(
+            key: $key,
+            subject: "[boringbot] Falta USDT para la próxima compra (en {$leadHours}h)",
+            body: "La próxima compra está programada dentro de {$leadHours}h.\nVencimiento (hora local): {$dueAtLocal}\nNecesita: " . $this->fmtMoney($needUsdt) . " USDT\nDisponible (ledger): " . $this->fmtMoney($haveUsdt) . " USDT\n"
+        );
+        if ($ok) {
+            $this->setMeta('notify_no_funds_lead_due_at', $dueMarker);
+        }
+    }
+
+    private function sendEvent(string $key, string $subject, string $body): bool
     {
         if (!$this->isEnabled()) {
-            return;
+            return false;
         }
 
         try {
@@ -75,6 +104,7 @@ final class Notifier
                 'subject' => $subject,
             ]);
             $this->setMeta('notify_last_sent_' . $key, (new DateTimeImmutable('now', new \DateTimeZone('UTC')))->format(DATE_ATOM));
+            return true;
         } catch (Throwable $e) {
             $this->logger->error('Email notify failed', [
                 'key' => $key,
@@ -84,6 +114,7 @@ final class Notifier
                 'key' => $key,
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 
@@ -133,5 +164,11 @@ final class Notifier
                 ':payload' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             ]
         );
+    }
+
+    private function fmtMoney(float $v): string
+    {
+        // Keep it readable (avoid long float tails).
+        return rtrim(rtrim(number_format($v, 8, '.', ''), '0'), '.');
     }
 }

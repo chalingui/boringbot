@@ -29,6 +29,7 @@ final class PurchaseManager
         private readonly float $dcaAmountUsdt,
         private readonly int $dcaIntervalDays,
         private readonly float $sellMarkupPct,
+        private readonly int $noFundsLeadHours,
         private readonly bool $dryRun,
     ) {
     }
@@ -469,11 +470,26 @@ final class PurchaseManager
 
     private function placeNewPurchaseIfDue(): void
     {
+        $nowUtc = new DateTimeImmutable('now', new \DateTimeZone('UTC'));
         $latest = $this->db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
         if ($latest !== null) {
             $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
             $dueAt = $last->add(new DateInterval('P' . $this->dcaIntervalDays . 'D'));
-            if (new DateTimeImmutable('now', new \DateTimeZone('UTC')) < $dueAt) {
+            if ($nowUtc < $dueAt) {
+                if (
+                    !$this->dryRun
+                    && $this->notifier !== null
+                    && $this->noFundsLeadHours > 0
+                ) {
+                    $secondsUntilDue = $dueAt->getTimestamp() - $nowUtc->getTimestamp();
+                    $leadSeconds = $this->noFundsLeadHours * 3600;
+                    if ($secondsUntilDue > 0 && $secondsUntilDue <= $leadSeconds) {
+                        $usdt = $this->getBalance('USDT');
+                        if ($usdt + 1e-9 < $this->dcaAmountUsdt) {
+                            $this->notifier->insufficientFundsLead($this->dcaAmountUsdt, $usdt, $dueAt, $this->noFundsLeadHours);
+                        }
+                    }
+                }
                 return;
             }
         }

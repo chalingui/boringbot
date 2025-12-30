@@ -100,6 +100,7 @@ try {
         (float)$cfg['strategy']['dca_amount_usdt'],
         (int)$cfg['strategy']['dca_interval_days'],
         (float)$cfg['strategy']['sell_markup_pct'],
+        (int)($cfg['notify']['no_funds_lead_hours'] ?? 48),
         $dryRun,
     );
 
