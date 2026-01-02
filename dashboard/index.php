@@ -309,31 +309,57 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $limit = 1000;
     }
 
-    $purchases = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 12');
+    $purchases = $db->fetchAll('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 50');
+    $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","SOLD_PENDING_CONVERT") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
+    if (!is_array($primaryPurchase)) {
+        $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
+    }
+
     $startDt = null;
-    foreach ($purchases as $p) {
-        $t = (string)($p['buy_filled_at'] ?? $p['created_at'] ?? '');
-        if ($t === '') {
-            continue;
-        }
-        try {
-            $dt = new DateTimeImmutable($t . ' UTC');
-            $startDt = $startDt === null ? $dt : ($dt < $startDt ? $dt : $startDt);
-        } catch (Throwable) {
-            // ignore
+    $primaryBuyMs = null;
+    $primaryId = null;
+    if (is_array($primaryPurchase)) {
+        $primaryId = isset($primaryPurchase['id']) ? (int)$primaryPurchase['id'] : null;
+        $t = (string)($primaryPurchase['buy_filled_at'] ?? $primaryPurchase['created_at'] ?? '');
+        if ($t !== '') {
+            try {
+                $startDt = new DateTimeImmutable($t . ' UTC');
+                $primaryBuyMs = (float)($startDt->getTimestamp() * 1000);
+            } catch (Throwable) {
+                // ignore
+            }
         }
     }
     $nowUtc = new DateTimeImmutable('now', new DateTimeZone('UTC'));
     if ($startDt === null) {
         $startDt = $nowUtc->sub(new DateInterval('P7D'));
     }
-    $minStart = $nowUtc->sub(new DateInterval('P30D'));
-    if ($startDt < $minStart) {
-        $startDt = $minStart;
-    }
 
     $startMs = (int)($startDt->getTimestamp() * 1000);
     $endMs = (int)($nowUtc->getTimestamp() * 1000);
+
+    $intervalOriginal = $interval;
+    $spanMinutes = max(1.0, ($endMs - $startMs) / 60000.0);
+    $intervalMinutes = null;
+    if ($interval === 'D' || $interval === 'd') {
+        $intervalMinutes = 1440;
+    } elseif (ctype_digit($interval)) {
+        $intervalMinutes = (int)$interval;
+    }
+
+    $allowedIntervalsMinutes = [1, 3, 5, 15, 30, 60, 120, 240, 360, 720, 1440];
+    if ($intervalMinutes !== null) {
+        $needPoints = (int)ceil($spanMinutes / max(1, $intervalMinutes));
+        if ($needPoints > $limit) {
+            foreach ($allowedIntervalsMinutes as $m) {
+                if (ceil($spanMinutes / $m) <= $limit) {
+                    $intervalMinutes = $m;
+                    break;
+                }
+            }
+            $interval = $intervalMinutes >= 1440 ? 'D' : (string)$intervalMinutes;
+        }
+    }
 
     $series = $bybit->klines($symbol, $interval, $startMs, $endMs, $limit);
 
@@ -394,9 +420,17 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $palette = ['#6ea8ff', '#41d18b', '#ffcd57', '#ff6b6b', '#b388ff', '#4dd0e1', '#ff8fab', '#a3e635'];
 
     echo '<div class="muted" style="margin-top:6px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
-    echo '<div>Symbol: <code>' . h($symbol) . '</code> | interval: <code>' . h($interval) . '</code> | points: <code>' . h((string)count($series)) . '</code></div>';
+    $intervalLabel = $intervalOriginal === $interval ? $interval : ($intervalOriginal . ' → ' . $interval);
+    echo '<div>Symbol: <code>' . h($symbol) . '</code> | interval: <code>' . h($intervalLabel) . '</code> | points: <code>' . h((string)count($series)) . '</code></div>';
     echo '<div>Window: <code>' . h((new DateTimeImmutable('@' . (int)($x0 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code> → <code>' . h((new DateTimeImmutable('@' . (int)($x1 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code></div>';
     echo '</div>';
+    if ($primaryPurchase !== null && is_array($primaryPurchase) && $primaryBuyMs !== null) {
+        $tStr = (string)($primaryPurchase['buy_filled_at'] ?? $primaryPurchase['created_at'] ?? '');
+        $buyPx = $primaryPurchase['buy_price'] !== null ? (float)$primaryPurchase['buy_price'] : null;
+        $buyUsdt = $primaryPurchase['buy_usdt'] !== null ? (float)$primaryPurchase['buy_usdt'] : null;
+        $buyLocal = $tStr !== '' ? fmtDbDt($tStr) : '';
+        echo '<div class="muted" style="margin-top:6px">Compra: <code>#' . h((string)($primaryId ?? '')) . '</code> — <code>' . h($buyLocal) . '</code> — Monto: <code>' . h($buyUsdt !== null ? number_format($buyUsdt, 2, '.', '') : '') . ' USDT</code> — Px: <code>' . h($buyPx !== null ? number_format($buyPx, 2, '.', '') : '') . '</code></div>';
+    }
 
     echo '<div class="table-wrap" style="margin-top:10px">';
     echo '<svg viewBox="0 0 ' . h((string)$w) . ' ' . h((string)$h) . '" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Price chart">';
@@ -451,8 +485,47 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
 
         $cx = $sx($buyMs);
         $cy = $sy($buyPrice);
-        echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '" />';
+        $buyLocalShort = $buyDt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i');
+        $buyUsdt = $p['buy_usdt'] !== null ? (float)$p['buy_usdt'] : null;
+
+        $isPrimary = $primaryId !== null && $id === $primaryId;
+        if ($isPrimary) {
+            // Buy time marker (vertical) to make the "momento de compra" visible in the chart.
+            echo '<line x1="' . h((string)$cx) . '" y1="' . h((string)$pt) . '" x2="' . h((string)$cx) . '" y2="' . h((string)($pt + $innerH)) . '" stroke="' . h($color) . '" stroke-width="1" opacity="0.35" stroke-dasharray="4 4" />';
+        }
+
+        $title = '#' . (string)$id . "\n" . $buyLocalShort . "\n";
+        if ($buyUsdt !== null) {
+            $title .= 'Monto ' . number_format($buyUsdt, 2, '.', '') . " USDT\n";
+        }
+        $title .= 'Px ' . number_format($buyPrice, 2, '.', '');
+        echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '"><title>' . h($title) . '</title></circle>';
         echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
+        if ($isPrimary) {
+            $labelX = $cx + 10;
+            $labelAnchor = 'start';
+            if ($labelX > ($w - 220)) {
+                $labelX = $cx - 10;
+                $labelAnchor = 'end';
+            }
+            $labelY = $cy - 18;
+            if ($labelY < ($pt + 18)) {
+                $labelY = $cy + 18;
+            }
+            if ($labelY > ($pt + $innerH - 14)) {
+                $labelY = $cy - 18;
+            }
+
+            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="' . h($labelAnchor) . '" fill="' . h($color) . '" font-size="10">';
+            $line1 = 'Compra #' . (string)$id;
+            if ($buyUsdt !== null) {
+                $line1 .= ' — ' . number_format($buyUsdt, 2, '.', '') . ' USDT';
+            }
+            $line1 .= ' — Px ' . number_format($buyPrice, 2, '.', '');
+            echo '<tspan x="' . h((string)$labelX) . '" dy="0">' . h($line1) . '</tspan>';
+            echo '<tspan x="' . h((string)$labelX) . '" dy="12">' . h($buyLocalShort) . '</tspan>';
+            echo '</text>';
+        }
     }
 
     echo '<text x="' . h((string)10) . '" y="' . h((string)($pt + 12)) . '" fill="rgba(255,255,255,.6)" font-size="12">' . h(number_format($maxY, 2, '.', '')) . '</text>';
