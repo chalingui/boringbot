@@ -1,4 +1,6 @@
 /db/boringbot.sqlite
+/db/boringbot.sqlite-wal
+/db/boringbot.sqlite-shm
 /logs/*.log
 /storage/*.lock
 /.env

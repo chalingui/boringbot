@@ -218,7 +218,6 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
 renderHeader(match ($view) {
     'purchases' => 'Compras',
     'moves' => 'Movimientos',
-    'chart' => 'Gráfico',
     'logs' => 'Logs',
     default => 'Dashboard',
 });
@@ -271,16 +270,16 @@ function renderMovementsTable(Database $db, int $limit = 50): void
         $decoded = json_decode($payload, true);
         if (is_array($decoded)) {
             $decoded = normalizePayloadForDisplay($decoded);
-            $payload = json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: (string)$e['payload_json'];
+            $payload = json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: (string)$e['payload_json'];
         }
-        if (strlen($payload) > 240) {
-            $payload = substr($payload, 0, 240) . '…';
+        if (strlen($payload) > 1200) {
+            $payload = substr($payload, 0, 1200) . "\n…";
         }
 
         echo '<tr>';
         echo '<td>' . h(fmtDbDt((string)$e['created_at'])) . '</td>';
         echo '<td><span class="mono">' . h($type) . '</span></td>';
-        echo '<td><span class="mono">' . h($payload) . '</span></td>';
+        echo '<td><pre class="mono" style="margin:0;max-height:180px;overflow:auto">' . h($payload) . '</pre></td>';
         echo '</tr>';
 
         $shown++;
@@ -559,11 +558,8 @@ if ($view === 'moves') {
 }
 
 if ($view === 'chart') {
-    $interval = (string)($_GET['interval'] ?? '15'); // minutes
-    $limit = (int)($_GET['limit'] ?? 400);
-    renderChartCard($db, $cfg, $interval, $limit);
-
-    renderFooter();
+    // Backward-compat: chart is now shown on home dashboard.
+    header('Location: /dashboard/', true, 302);
     exit;
 }
 
