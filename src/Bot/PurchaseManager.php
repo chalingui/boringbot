@@ -340,19 +340,42 @@ final class PurchaseManager
                 'profit_usdt' => $profitUsdt,
             ]);
 
+            $convertSkipped = false;
+            $minConvertUsdt = null;
+            if ($profitUsdt > 0) {
+                try {
+                    $minConvertUsdt = $this->bybit->minOrderAmount($this->profitConverter->symbol());
+                } catch (Throwable) {
+                    $minConvertUsdt = null;
+                }
+                if (is_float($minConvertUsdt) && $minConvertUsdt > 0 && $profitUsdt + 1e-9 < $minConvertUsdt) {
+                    $convertSkipped = true;
+                    $this->logger->info('Profit below min order amount; keeping as USDT', [
+                        'purchase_id' => $p['id'],
+                        'profit_usdt' => $profitUsdt,
+                        'min_order_amt' => $minConvertUsdt,
+                        'symbol' => $this->profitConverter->symbol(),
+                    ]);
+                }
+            }
+
             $convOrderId = null;
             $profitUsdc = 0.0;
             $usdtSpent = 0.0;
             $convertError = null;
-            try {
-                [$convOrderId, $profitUsdc, $usdtSpent] = $this->profitConverter->convertUsdtToUsdc($profitUsdt);
-            } catch (Throwable $e) {
-                $convertError = $e->getMessage();
-                $this->logger->error('Profit conversion failed; keeping profit as USDT for retry', [
-                    'purchase_id' => $p['id'],
-                    'error' => $convertError,
-                    'profit_usdt' => $profitUsdt,
-                ]);
+            if (!$convertSkipped) {
+                try {
+                    [$convOrderId, $profitUsdc, $usdtSpent] = $this->profitConverter->convertUsdtToUsdc($profitUsdt);
+                } catch (Throwable $e) {
+                    $convertError = $e->getMessage();
+                    $this->logger->error('Profit conversion failed; keeping profit as USDT for retry', [
+                        'purchase_id' => $p['id'],
+                        'error' => $convertError,
+                        'profit_usdt' => $profitUsdt,
+                        'profit_convert_symbol' => $this->profitConverter->symbol(),
+                        'profit_convert_min_order_amt' => $minConvertUsdt,
+                    ]);
+                }
             }
 
             try {
@@ -369,16 +392,20 @@ final class PurchaseManager
                         ':su' => $sellUsdt,
                         ':pu' => $profitUsdt,
                         ':pc' => $profitUsdc,
-                        ':st' => $convertError === null ? self::STATUS_SOLD : self::STATUS_SOLD_PENDING_CONVERT,
+                        ':st' => ($convertError === null || $convertSkipped) ? self::STATUS_SOLD : self::STATUS_SOLD_PENDING_CONVERT,
                         ':id' => $p['id'],
                     ]
                 );
 
                 $this->addBalance('ETH', -$sellQty);
-                $this->addBalance('USDT', $buyUsdt + ($convertError === null ? 0.0 : $profitUsdt));
+                $this->addBalance('USDT', $buyUsdt + (($convertError === null && !$convertSkipped) ? 0.0 : $profitUsdt));
                 $this->addBalance('USDC', $profitUsdc);
 
-                $this->insertEvent($convertError === null ? 'SOLD' : 'SOLD_PROFIT_PENDING', [
+                $eventType = $convertError === null ? 'SOLD' : 'SOLD_PROFIT_PENDING';
+                if ($convertSkipped) {
+                    $eventType = 'SOLD_PROFIT_BELOW_MIN';
+                }
+                $this->insertEvent($eventType, [
                     'purchase_id' => (int)$p['id'],
                     'sell_order_id' => (string)$p['sell_order_id'],
                     'sell_usdt' => $sellUsdt,
@@ -389,6 +416,8 @@ final class PurchaseManager
                     'profit_usdc' => $profitUsdc,
                     'profit_convert_usdt_spent' => $usdtSpent,
                     'profit_convert_error' => $convertError,
+                    'profit_convert_min_order_amt' => $minConvertUsdt,
+                    'profit_convert_skipped' => $convertSkipped,
                 ]);
                 $this->db->commit();
             } catch (Throwable $e) {
@@ -418,6 +447,32 @@ final class PurchaseManager
                 $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
                     ':st' => self::STATUS_SOLD,
                     ':id' => $p['id'],
+                ]);
+                continue;
+            }
+
+            $minConvertUsdt = null;
+            try {
+                $minConvertUsdt = $this->bybit->minOrderAmount($this->profitConverter->symbol());
+            } catch (Throwable) {
+                $minConvertUsdt = null;
+            }
+            if (is_float($minConvertUsdt) && $minConvertUsdt > 0 && $profitUsdt + 1e-9 < $minConvertUsdt) {
+                $this->logger->info('Pending profit below min order amount; marking SOLD and keeping as USDT', [
+                    'purchase_id' => $p['id'],
+                    'profit_usdt' => $profitUsdt,
+                    'min_order_amt' => $minConvertUsdt,
+                    'symbol' => $this->profitConverter->symbol(),
+                ]);
+                $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
+                    ':st' => self::STATUS_SOLD,
+                    ':id' => $p['id'],
+                ]);
+                $this->insertEvent('PROFIT_CONVERT_SKIPPED_BELOW_MIN', [
+                    'purchase_id' => (int)$p['id'],
+                    'profit_usdt' => $profitUsdt,
+                    'profit_convert_symbol' => $this->profitConverter->symbol(),
+                    'profit_convert_min_order_amt' => $minConvertUsdt,
                 ]);
                 continue;
             }

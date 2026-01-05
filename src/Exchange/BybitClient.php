@@ -130,6 +130,21 @@ final class BybitClient
         return $orderId;
     }
 
+    /**
+     * Returns the minimum order amount (notional) for a symbol, if provided by Bybit.
+     * For spot, this is typically in the quote coin (e.g., USDT for USDCUSDT).
+     */
+    public function minOrderAmount(string $symbol): ?float
+    {
+        $info = $this->instrumentInfo($symbol);
+        $lot = $info['lotSizeFilter'] ?? [];
+        $min = $lot['minOrderAmt'] ?? null;
+        if ($min === null || $min === '') {
+            return null;
+        }
+        return (float)$min;
+    }
+
     public function createLimitSell(string $symbol, float $qtyBase, float $price): string
     {
         $info = $this->instrumentInfo($symbol);
