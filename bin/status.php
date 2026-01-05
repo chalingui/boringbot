@@ -48,6 +48,60 @@ $bybit = new BybitClient(
     (string)($cfg['bybit']['account_type'] ?? 'SPOT'),
 );
 
+/**
+ * @return array<int, array{created_at:string,type:string,payload:array}>
+ */
+function recentEventsForPurchase(Database $db, int $purchaseId, int $limit = 10): array
+{
+    $limit = max(1, min(50, $limit));
+
+    // Prefer JSON query when JSON1 is available.
+    try {
+        $rows = $db->fetchAll(
+            'SELECT created_at, type, payload_json
+             FROM events_log
+             WHERE json_extract(payload_json, \'$.purchase_id\') = :id
+             ORDER BY id DESC
+             LIMIT ' . (int)$limit,
+            [':id' => $purchaseId]
+        );
+
+        $out = [];
+        foreach ($rows as $r) {
+            $payload = json_decode((string)$r['payload_json'], true);
+            $out[] = [
+                'created_at' => (string)$r['created_at'],
+                'type' => (string)$r['type'],
+                'payload' => is_array($payload) ? $payload : [],
+            ];
+        }
+        return $out;
+    } catch (Throwable) {
+        // Fall back to scanning recent events.
+    }
+
+    $rows = $db->fetchAll('SELECT created_at, type, payload_json FROM events_log ORDER BY id DESC LIMIT 300');
+    $out = [];
+    foreach ($rows as $r) {
+        $payload = json_decode((string)$r['payload_json'], true);
+        if (!is_array($payload)) {
+            continue;
+        }
+        if (($payload['purchase_id'] ?? null) !== $purchaseId) {
+            continue;
+        }
+        $out[] = [
+            'created_at' => (string)$r['created_at'],
+            'type' => (string)$r['type'],
+            'payload' => $payload,
+        ];
+        if (count($out) >= $limit) {
+            break;
+        }
+    }
+    return $out;
+}
+
 if ($id !== null && $id > 0) {
     $p = $db->fetchOne('SELECT * FROM purchases WHERE id = :id', [':id' => $id]);
     if ($p === null) {
@@ -70,6 +124,37 @@ if ($id !== null && $id > 0) {
     echo "- profit_usdt: {$p['profit_usdt']}\n";
     echo "- profit_usdc: {$p['profit_usdc']}\n";
     echo "\n";
+
+    $events = recentEventsForPurchase($db, $id, 10);
+    if ($events !== []) {
+        echo "Recent events (this purchase)\n";
+        foreach ($events as $e) {
+            $payload = $e['payload'];
+            $extra = [];
+            if (isset($payload['profit_convert_error']) && (string)$payload['profit_convert_error'] !== '') {
+                $extra[] = 'profit_convert_error=' . (string)$payload['profit_convert_error'];
+            }
+            if (isset($payload['profit_convert_order_id']) && (string)$payload['profit_convert_order_id'] !== '') {
+                $extra[] = 'profit_convert_order_id=' . (string)$payload['profit_convert_order_id'];
+            }
+            if (isset($payload['profit_convert_symbol']) && (string)$payload['profit_convert_symbol'] !== '') {
+                $extra[] = 'profit_convert_symbol=' . (string)$payload['profit_convert_symbol'];
+            }
+            if (isset($payload['profit_usdt'])) {
+                $extra[] = 'profit_usdt=' . (string)$payload['profit_usdt'];
+            }
+            if (isset($payload['profit_usdc'])) {
+                $extra[] = 'profit_usdc=' . (string)$payload['profit_usdc'];
+            }
+            echo sprintf(
+                "- %s %s%s\n",
+                $fmtDbDt($e['created_at']),
+                $e['type'],
+                $extra === [] ? '' : (' | ' . implode(' | ', $extra))
+            );
+        }
+        echo "\n";
+    }
 
     if ($p['status'] === 'OPEN' && $p['sell_price'] !== null && $p['sell_qty'] !== null) {
         $last = $bybit->tickerLastPrice((string)$cfg['symbols']['trade']);
