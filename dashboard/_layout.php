@@ -14,12 +14,15 @@ function renderHeader(string $title): void
     echo '<meta http-equiv="Pragma" content="no-cache">';
     echo '<meta http-equiv="Expires" content="0">';
     echo '<title>' . h($title) . '</title>';
+    echo '<link rel="icon" href="/dashboard/favicon.svg" type="image/svg+xml">';
     echo '<style>
       :root{--bg:#0b1020;--card:#121a33;--text:#e8ecff;--muted:#9aa7d6;--line:#263158;--ok:#41d18b;--warn:#ffcd57;--bad:#ff6b6b;}
       body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
       a{color:#9fb7ff;text-decoration:none} a:hover{text-decoration:underline}
       .wrap{max-width:1100px;margin:0 auto;padding:18px}
       .top{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px}
+      .brand{display:flex;gap:10px;align-items:center}
+      .brand img{width:34px;height:34px;display:block}
       .nav{display:flex;gap:10px;flex-wrap:wrap}
       .nav a{padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.03)}
       .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
@@ -43,7 +46,7 @@ function renderHeader(string $title): void
       .bar{height:10px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:999px;overflow:hidden}
       .bar > span{display:block;height:100%;background:linear-gradient(90deg,#6ea8ff,#41d18b);width:0%}
     </style></head><body><div class="wrap">';
-    echo '<div class="top"><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div>';
+    echo '<div class="top"><div class="brand"><img src="/dashboard/assets/boringbot-logo.svg" alt="boringbot"><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';
     echo '<a href="/dashboard/">Dashboard</a>';
     echo '<a href="/dashboard/?view=moves">Movimientos</a>';
