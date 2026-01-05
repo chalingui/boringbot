@@ -165,6 +165,10 @@ final class PurchaseManager
                 $this->db->rollBack();
                 throw $e;
             }
+
+            if (!$this->dryRun && $this->notifier !== null) {
+                $this->notifier->bought((int)$p['id'], $this->symbolTrade, (float)$p['buy_usdt'], $netQty, $avgPrice);
+            }
         }
     }
 
