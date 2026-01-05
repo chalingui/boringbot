@@ -34,10 +34,15 @@ foreach ($argv as $i => $arg) {
 }
 
 $balances = $db->fetchAll('SELECT asset, amount FROM balances ORDER BY asset ASC');
+$profit = $db->fetchOne('SELECT COALESCE(SUM(profit_usdt), 0) as p FROM purchases WHERE profit_usdt IS NOT NULL');
 echo "Balances (bot ledger)\n";
 foreach ($balances as $b) {
+    if ((string)$b['asset'] === 'USDC') {
+        continue;
+    }
     echo sprintf("- %s: %.8f\n", $b['asset'], (float)$b['amount']);
 }
+echo sprintf("- Profit: %.8f\n", (float)($profit['p'] ?? 0.0));
 echo "\n";
 
 $bybit = new BybitClient(
@@ -122,7 +127,6 @@ if ($id !== null && $id > 0) {
     echo "- sell_qty: {$p['sell_qty']}\n";
     echo "- sell_usdt: {$p['sell_usdt']}\n";
     echo "- profit_usdt: {$p['profit_usdt']}\n";
-    echo "- profit_usdc: {$p['profit_usdc']}\n";
     echo "\n";
 
     $events = recentEventsForPurchase($db, $id, 10);
@@ -131,20 +135,8 @@ if ($id !== null && $id > 0) {
         foreach ($events as $e) {
             $payload = $e['payload'];
             $extra = [];
-            if (isset($payload['profit_convert_error']) && (string)$payload['profit_convert_error'] !== '') {
-                $extra[] = 'profit_convert_error=' . (string)$payload['profit_convert_error'];
-            }
-            if (isset($payload['profit_convert_order_id']) && (string)$payload['profit_convert_order_id'] !== '') {
-                $extra[] = 'profit_convert_order_id=' . (string)$payload['profit_convert_order_id'];
-            }
-            if (isset($payload['profit_convert_symbol']) && (string)$payload['profit_convert_symbol'] !== '') {
-                $extra[] = 'profit_convert_symbol=' . (string)$payload['profit_convert_symbol'];
-            }
             if (isset($payload['profit_usdt'])) {
                 $extra[] = 'profit_usdt=' . (string)$payload['profit_usdt'];
-            }
-            if (isset($payload['profit_usdc'])) {
-                $extra[] = 'profit_usdc=' . (string)$payload['profit_usdc'];
             }
             echo sprintf(
                 "- %s %s%s\n",

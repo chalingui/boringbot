@@ -38,7 +38,7 @@ function renderHeader(string $title): void
       .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:12px}
       .pill.OPEN{border-color:rgba(65,209,139,.4);color:var(--ok)}
       .pill.SOLD{border-color:rgba(159,183,255,.5);color:#9fb7ff}
-      .pill.BUYING,.pill.HOLDING,.pill.SOLD_PENDING_CONVERT{border-color:rgba(255,205,87,.4);color:var(--warn)}
+      .pill.BUYING,.pill.HOLDING{border-color:rgba(255,205,87,.4);color:var(--warn)}
       .pill.ERROR{border-color:rgba(255,107,107,.4);color:var(--bad)}
       .bar{height:10px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:999px;overflow:hidden}
       .bar > span{display:block;height:100%;background:linear-gradient(90deg,#6ea8ff,#41d18b);width:0%}

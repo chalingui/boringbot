@@ -16,13 +16,11 @@ final class PurchaseManager
     private const STATUS_BUYING = 'BUYING';
     private const STATUS_HOLDING = 'HOLDING';
     private const STATUS_OPEN = 'OPEN';
-    private const STATUS_SOLD_PENDING_CONVERT = 'SOLD_PENDING_CONVERT';
     private const STATUS_SOLD = 'SOLD';
 
     public function __construct(
         private readonly Database $db,
         private readonly BybitClient $bybit,
-        private readonly ProfitConverter $profitConverter,
         private readonly ?Notifier $notifier,
         private readonly Logger $logger,
         private readonly string $symbolTrade,
@@ -36,17 +34,27 @@ final class PurchaseManager
 
     public function tick(): void
     {
+        $this->migrateLegacyStatuses();
         $this->ensureBalanceRows();
         $this->syncBuyingPurchases();
         $this->syncHoldingPurchases();
         $this->syncOpenSells();
-        $this->syncSoldPendingConvert();
         $this->placeNewPurchaseIfDue();
+    }
+
+    private function migrateLegacyStatuses(): void
+    {
+        // Backward-compat: older versions used SOLD_PENDING_CONVERT when profit conversion to USDC failed.
+        // Conversion was removed; keep DB clean by treating those as SOLD (profit remains in USDT).
+        $this->db->exec('UPDATE purchases SET status = :to WHERE status = :from', [
+            ':to' => self::STATUS_SOLD,
+            ':from' => 'SOLD_PENDING_CONVERT',
+        ]);
     }
 
     private function ensureBalanceRows(): void
     {
-        foreach (['USDT', 'ETH', 'USDC'] as $asset) {
+        foreach (['USDT', 'ETH'] as $asset) {
             $this->db->exec('INSERT OR IGNORE INTO balances(asset, amount) VALUES(:a, 0)', [':a' => $asset]);
         }
     }
@@ -334,49 +342,11 @@ final class PurchaseManager
                 $profitUsdt = 0.0;
             }
 
-            $this->logger->info('Sell filled; realizing principal and converting profit', [
+            $this->logger->info('Sell filled; realizing principal and profit', [
                 'purchase_id' => $p['id'],
                 'sell_usdt' => $sellUsdt,
                 'profit_usdt' => $profitUsdt,
             ]);
-
-            $convertSkipped = false;
-            $minConvertUsdt = null;
-            if ($profitUsdt > 0) {
-                try {
-                    $minConvertUsdt = $this->bybit->minOrderAmount($this->profitConverter->symbol());
-                } catch (Throwable) {
-                    $minConvertUsdt = null;
-                }
-                if (is_float($minConvertUsdt) && $minConvertUsdt > 0 && $profitUsdt + 1e-9 < $minConvertUsdt) {
-                    $convertSkipped = true;
-                    $this->logger->info('Profit below min order amount; keeping as USDT', [
-                        'purchase_id' => $p['id'],
-                        'profit_usdt' => $profitUsdt,
-                        'min_order_amt' => $minConvertUsdt,
-                        'symbol' => $this->profitConverter->symbol(),
-                    ]);
-                }
-            }
-
-            $convOrderId = null;
-            $profitUsdc = 0.0;
-            $usdtSpent = 0.0;
-            $convertError = null;
-            if (!$convertSkipped) {
-                try {
-                    [$convOrderId, $profitUsdc, $usdtSpent] = $this->profitConverter->convertUsdtToUsdc($profitUsdt);
-                } catch (Throwable $e) {
-                    $convertError = $e->getMessage();
-                    $this->logger->error('Profit conversion failed; keeping profit as USDT for retry', [
-                        'purchase_id' => $p['id'],
-                        'error' => $convertError,
-                        'profit_usdt' => $profitUsdt,
-                        'profit_convert_symbol' => $this->profitConverter->symbol(),
-                        'profit_convert_min_order_amt' => $minConvertUsdt,
-                    ]);
-                }
-            }
 
             try {
                 $this->db->begin();
@@ -385,39 +355,25 @@ final class PurchaseManager
                         sell_filled_at = datetime(\'now\'),
                         sell_usdt = :su,
                         profit_usdt = :pu,
-                        profit_usdc = :pc,
                         status = :st
                      WHERE id = :id',
                     [
                         ':su' => $sellUsdt,
                         ':pu' => $profitUsdt,
-                        ':pc' => $profitUsdc,
-                        ':st' => ($convertError === null || $convertSkipped) ? self::STATUS_SOLD : self::STATUS_SOLD_PENDING_CONVERT,
+                        ':st' => self::STATUS_SOLD,
                         ':id' => $p['id'],
                     ]
                 );
 
                 $this->addBalance('ETH', -$sellQty);
-                $this->addBalance('USDT', $buyUsdt + (($convertError === null && !$convertSkipped) ? 0.0 : $profitUsdt));
-                $this->addBalance('USDC', $profitUsdc);
+                $this->addBalance('USDT', $buyUsdt + $profitUsdt);
 
-                $eventType = $convertError === null ? 'SOLD' : 'SOLD_PROFIT_PENDING';
-                if ($convertSkipped) {
-                    $eventType = 'SOLD_PROFIT_BELOW_MIN';
-                }
-                $this->insertEvent($eventType, [
+                $this->insertEvent('SOLD', [
                     'purchase_id' => (int)$p['id'],
                     'sell_order_id' => (string)$p['sell_order_id'],
                     'sell_usdt' => $sellUsdt,
                     'principal_usdt' => $buyUsdt,
                     'profit_usdt' => $profitUsdt,
-                    'profit_convert_symbol' => $this->profitConverter->symbol(),
-                    'profit_convert_order_id' => $convOrderId,
-                    'profit_usdc' => $profitUsdc,
-                    'profit_convert_usdt_spent' => $usdtSpent,
-                    'profit_convert_error' => $convertError,
-                    'profit_convert_min_order_amt' => $minConvertUsdt,
-                    'profit_convert_skipped' => $convertSkipped,
                 ]);
                 $this->db->commit();
             } catch (Throwable $e) {
@@ -425,100 +381,8 @@ final class PurchaseManager
                 throw $e;
             }
 
-            if ($convertError === null && !$this->dryRun && $this->notifier !== null) {
-                $this->notifier->sold((int)$p['id'], $sellUsdt, $profitUsdt, $profitUsdc);
-            }
-        }
-    }
-
-    private function syncSoldPendingConvert(): void
-    {
-        if ($this->dryRun) {
-            return;
-        }
-
-        $rows = $this->db->fetchAll('SELECT * FROM purchases WHERE status = :s ORDER BY id ASC', [
-            ':s' => self::STATUS_SOLD_PENDING_CONVERT,
-        ]);
-
-        foreach ($rows as $p) {
-            $profitUsdt = (float)($p['profit_usdt'] ?? 0.0);
-            if ($profitUsdt <= 0) {
-                $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
-                    ':st' => self::STATUS_SOLD,
-                    ':id' => $p['id'],
-                ]);
-                continue;
-            }
-
-            $minConvertUsdt = null;
-            try {
-                $minConvertUsdt = $this->bybit->minOrderAmount($this->profitConverter->symbol());
-            } catch (Throwable) {
-                $minConvertUsdt = null;
-            }
-            if (is_float($minConvertUsdt) && $minConvertUsdt > 0 && $profitUsdt + 1e-9 < $minConvertUsdt) {
-                $this->logger->info('Pending profit below min order amount; marking SOLD and keeping as USDT', [
-                    'purchase_id' => $p['id'],
-                    'profit_usdt' => $profitUsdt,
-                    'min_order_amt' => $minConvertUsdt,
-                    'symbol' => $this->profitConverter->symbol(),
-                ]);
-                $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
-                    ':st' => self::STATUS_SOLD,
-                    ':id' => $p['id'],
-                ]);
-                $this->insertEvent('PROFIT_CONVERT_SKIPPED_BELOW_MIN', [
-                    'purchase_id' => (int)$p['id'],
-                    'profit_usdt' => $profitUsdt,
-                    'profit_convert_symbol' => $this->profitConverter->symbol(),
-                    'profit_convert_min_order_amt' => $minConvertUsdt,
-                ]);
-                continue;
-            }
-
-            $usdt = $this->getBalance('USDT');
-            if ($usdt + 1e-9 < $profitUsdt) {
-                $this->logger->warn('Insufficient USDT to convert pending profit (ledger)', [
-                    'purchase_id' => $p['id'],
-                    'need' => $profitUsdt,
-                    'have' => $usdt,
-                ]);
-                continue;
-            }
-
-            try {
-                [$convOrderId, $profitUsdc, $usdtSpent] = $this->profitConverter->convertUsdtToUsdc($profitUsdt);
-            } catch (Throwable $e) {
-                $this->logger->error('Retry profit conversion failed', [
-                    'purchase_id' => $p['id'],
-                    'error' => $e->getMessage(),
-                ]);
-                continue;
-            }
-
-            try {
-                $this->db->begin();
-                $this->db->exec('UPDATE purchases SET profit_usdc = :pc, status = :st WHERE id = :id', [
-                    ':pc' => $profitUsdc,
-                    ':st' => self::STATUS_SOLD,
-                    ':id' => $p['id'],
-                ]);
-                // Move from USDT to USDC in ledger.
-                $this->addBalance('USDT', -$usdtSpent);
-                $this->addBalance('USDC', $profitUsdc);
-                $this->insertEvent('PROFIT_CONVERT_RETRY', [
-                    'purchase_id' => (int)$p['id'],
-                    'profit_usdt' => $profitUsdt,
-                    'profit_convert_symbol' => $this->profitConverter->symbol(),
-                    'profit_convert_order_id' => $convOrderId,
-                    'profit_usdc' => $profitUsdc,
-                    'profit_convert_usdt_spent' => $usdtSpent,
-                ]);
-                $this->db->commit();
-            } catch (Throwable $e) {
-                $this->db->rollBack();
-                throw $e;
+            if (!$this->dryRun && $this->notifier !== null) {
+                $this->notifier->sold((int)$p['id'], $sellUsdt, $profitUsdt);
             }
         }
     }

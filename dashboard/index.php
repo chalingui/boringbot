@@ -208,7 +208,6 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
 
         echo '<td>';
         echo 'profit=' . h(v($p['profit_usdt'] ?? null)) . ' USDT';
-        echo '<br><span class="muted">usdc=' . h(v($p['profit_usdc'] ?? null)) . '</span>';
         echo '</td>';
         echo '</tr>';
     }
@@ -310,7 +309,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
 
     $purchases = $db->fetchAll('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 50');
-    $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","SOLD_PENDING_CONVERT") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
+    $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
     if (!is_array($primaryPurchase)) {
         $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
     }
@@ -584,8 +583,9 @@ if ($view === 'logs') {
 
 // Home (overview)
 $balances = $db->fetchAll('SELECT asset, amount FROM balances ORDER BY asset ASC');
-$open = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","SOLD_PENDING_CONVERT")');
+$open = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN")');
 $sold = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status = "SOLD"');
+$profit = $db->fetchOne('SELECT COALESCE(SUM(profit_usdt), 0) as p FROM purchases WHERE profit_usdt IS NOT NULL');
 $meta = $db->fetchAll('SELECT k, v FROM meta WHERE k IN ("last_run_finished_at","last_reconcile_finished_at")');
 $metaMap = [];
 foreach ($meta as $m) {
@@ -616,8 +616,12 @@ if (is_string($lastRecon) && $lastRecon !== '') {
 echo '<div class="grid">';
 echo '<div class="card col6"><div class="muted">Balances (ledger)</div><div class="kpi">';
 foreach ($balances as $b) {
+    if ((string)$b['asset'] === 'USDC') {
+        continue;
+    }
     echo '<div class="item"><div class="muted">' . h((string)$b['asset']) . '</div><div style="font-size:18px">' . h(number_format((float)$b['amount'], 8, '.', '')) . '</div></div>';
 }
+echo '<div class="item"><div class="muted">Profit</div><div style="font-size:18px">' . h(number_format((float)($profit['p'] ?? 0.0), 8, '.', '')) . '</div></div>';
 echo '</div></div>';
 
 echo '<div class="card col6"><div class="muted">Resumen</div>';

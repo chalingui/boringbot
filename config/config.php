@@ -16,8 +16,6 @@ return [
 
     'symbols' => [
         'trade' => getenv('SYMBOL_TRADE') ?: 'ETHUSDT',
-        // Market conversion for profits: spend USDT, receive USDC.
-        'profit_convert' => getenv('SYMBOL_PROFIT_CONVERT') ?: 'USDCUSDT',
     ],
 
     'strategy' => [

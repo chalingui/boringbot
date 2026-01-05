@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 use BoringBot\Bot\DcaBot;
 use BoringBot\Bot\Notifier;
-use BoringBot\Bot\ProfitConverter;
 use BoringBot\Bot\PurchaseManager;
 use BoringBot\DB\Database;
 use BoringBot\Exchange\BybitClient;
@@ -60,13 +59,6 @@ try {
         (string)($cfg['bybit']['account_type'] ?? 'SPOT'),
     );
 
-    $profitConverter = new ProfitConverter(
-        $bybit,
-        $logger,
-        (string)$cfg['symbols']['profit_convert'],
-        $dryRun,
-    );
-
     $notifier = null;
     if (($cfg['notify']['enabled'] ?? false) === true) {
         $mailer = new Mailer(
@@ -93,7 +85,6 @@ try {
     $purchases = new PurchaseManager(
         $db,
         $bybit,
-        $profitConverter,
         $notifier,
         $logger,
         (string)$cfg['symbols']['trade'],

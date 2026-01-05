@@ -35,7 +35,7 @@ php bin/notify-test.php --dry-run
 
 Eventos notificados:
 - Compra creada (cuando se coloca la orden de compra real)
-- Venta ejecutada (cuando se completa la venta y la conversión de profit a USDC)
+- Venta ejecutada (cuando se completa la venta y se registra el profit)
 - Sin USDT suficiente para comprar (con cooldown `NOTIFY_COOLDOWN_MINUTES`)
 - Sin USDT suficiente para el próximo DCA (aviso “anticipado” dentro de `NOTIFY_NO_FUNDS_LEAD_HOURS`)
 
@@ -76,18 +76,17 @@ php bin/status.php
 php bin/status.php --id 3
 ```
 Muestra:
-- Compras `BUYING` / `HOLDING` / `OPEN` / `SOLD` (y `SOLD_PENDING_CONVERT` si falló la conversión de profit)
+- Compras `BUYING` / `HOLDING` / `OPEN` / `SOLD`
 - Detalle de compra #N
 - Gap vs target (cuando está `OPEN`)
-- Balances del bot (USDT/ETH/USDC)
+- Balances del bot (USDT/ETH)
 
 ## Lógica de estrategia
 - Cada `DCA_INTERVAL_DAYS` compra `DCA_AMOUNT_USDT` de `ETHUSDT` (market buy por monto en USDT).
 - Al completarse la compra: crea una orden `LIMIT SELL` al `+SELL_MARKUP_PCT`.
 - Al completarse la venta:
   - `100 USDT` vuelven a `balances.USDT` (capital_pool).
-  - `profit = sell_usdt - 100` se convierte a `USDC` vía market en `USDCUSDT` y se acumula en `balances.USDC`.
-  - Si falla la conversión, el profit queda temporalmente como USDT y se reintenta (`SOLD_PENDING_CONVERT`).
+  - `profit = sell_usdt - 100` queda en `balances.USDT` y se acumula como ganancia realizada.
 
 ## Base de datos
 - SQLite: `db/boringbot.sqlite`

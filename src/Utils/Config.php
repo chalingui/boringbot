@@ -24,7 +24,6 @@ final class Config
             ],
             'symbols' => [
                 'trade' => getenv('SYMBOL_TRADE') ?: 'ETHUSDT',
-                'profit_convert' => getenv('SYMBOL_PROFIT_CONVERT') ?: 'USDCUSDT',
             ],
             'strategy' => [
                 'dca_amount_usdt' => (float)(getenv('DCA_AMOUNT_USDT') ?: 100),
