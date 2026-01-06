@@ -6,6 +6,29 @@ function h(string $s): string
     return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+function dashBase(): string
+{
+    $script = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+    if ($script === '') {
+        return '/dashboard';
+    }
+    $dir = str_replace('\\', '/', dirname($script));
+    $dir = $dir === '.' ? '' : $dir;
+    return rtrim($dir, '/');
+}
+
+function dashUrl(string $path = ''): string
+{
+    $base = dashBase();
+    if ($path === '') {
+        return $base . '/';
+    }
+    if (str_starts_with($path, '?')) {
+        return $base . '/' . $path;
+    }
+    return $base . '/' . ltrim($path, '/');
+}
+
 function renderHeader(string $title): void
 {
     echo '<!doctype html><html lang="es"><head><meta charset="utf-8">';
@@ -14,7 +37,7 @@ function renderHeader(string $title): void
     echo '<meta http-equiv="Pragma" content="no-cache">';
     echo '<meta http-equiv="Expires" content="0">';
     echo '<title>' . h($title) . '</title>';
-    echo '<link rel="icon" href="/dashboard/favicon.svg" type="image/svg+xml">';
+    echo '<link rel="icon" href="' . h(dashUrl('favicon.svg')) . '" type="image/svg+xml">';
     echo '<style>
       :root{--bg:#0b1020;--card:#121a33;--text:#e8ecff;--muted:#9aa7d6;--line:#263158;--ok:#41d18b;--warn:#ffcd57;--bad:#ff6b6b;}
       body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
@@ -46,11 +69,11 @@ function renderHeader(string $title): void
       .bar{height:10px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:999px;overflow:hidden}
       .bar > span{display:block;height:100%;background:linear-gradient(90deg,#6ea8ff,#41d18b);width:0%}
     </style></head><body><div class="wrap">';
-    echo '<div class="top"><div class="brand"><img src="/dashboard/assets/boringbot-logo.svg" alt="boringbot"><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
+    echo '<div class="top"><div class="brand"><a href="' . h(dashUrl()) . '" aria-label="Dashboard home" style="display:inline-flex"><img src="' . h(dashUrl('assets/boringbot-logo.svg')) . '" alt="boringbot"></a><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';
-    echo '<a href="/dashboard/">Dashboard</a>';
-    echo '<a href="/dashboard/?view=moves">Movimientos</a>';
-    echo '<a href="/dashboard/?view=logs">Logs</a>';
+    echo '<a href="' . h(dashUrl()) . '">Dashboard</a>';
+    echo '<a href="' . h(dashUrl('?view=moves')) . '">Movimientos</a>';
+    echo '<a href="' . h(dashUrl('?view=logs')) . '">Logs</a>';
     echo '</div></div>';
 }
 

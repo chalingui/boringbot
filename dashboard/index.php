@@ -167,7 +167,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         $deltaPct = ($lastPrice !== null && $targetPx !== null && $lastPrice > 0) ? ((($targetPx / $lastPrice) - 1.0) * 100.0) : null;
 
         echo '<tr id="p' . h((string)$id) . '">';
-        echo '<td><a href="/dashboard/?view=purchases#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
+        echo '<td><a href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '<br><span class="muted">' . h(agoDbDt((string)$p['created_at'])) . '</span></td>';
         echo '<td>' . h(number_format((float)$p['buy_usdt'], 2, '.', '')) . '</td>';
@@ -252,8 +252,8 @@ function renderMovementsTable(Database $db, int $limit = 50): void
 
     echo '<div class="muted" style="margin-bottom:8px">';
     echo $showAll
-        ? '<a href="/dashboard/?view=moves">Ocultar eventos de tick</a>'
-        : '<a href="/dashboard/?view=moves&all=1">Mostrar eventos de tick (RUN/RECONCILE)</a>';
+        ? '<a href="' . h(dashUrl('?view=moves')) . '">Ocultar eventos de tick</a>'
+        : '<a href="' . h(dashUrl('?view=moves&all=1')) . '">Mostrar eventos de tick (RUN/RECONCILE)</a>';
     echo '</div>';
 
     echo '<div class="card"><div class="muted">Últimos movimientos</div>';
@@ -570,7 +570,7 @@ if ($view === 'moves') {
 
 if ($view === 'chart') {
     // Backward-compat: chart is now shown on home dashboard.
-    header('Location: /dashboard/', true, 302);
+    header('Location: ' . dashUrl(), true, 302);
     exit;
 }
 
