@@ -396,12 +396,6 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $innerW = $w - $pl - $pr;
     $innerH = $h - $pt - $pb;
 
-    $x0 = (float)$series[0][0];
-    $x1 = (float)$series[count($series) - 1][0];
-    if ($x1 <= $x0) {
-        $x1 = $x0 + 1;
-    }
-
     // Next DCA marker (based on last purchase created_at + interval days, like the bot does).
     $nextBuyMs = null;
     $nextBuyLocal = null;
@@ -419,6 +413,17 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
                 $nextBuyLocal = null;
             }
         }
+    }
+
+    $x0 = (float)$series[0][0];
+    $x1 = (float)$series[count($series) - 1][0];
+    if ($x1 <= $x0) {
+        $x1 = $x0 + 1;
+    }
+
+    // Extend chart window to include next buy, even if we don't have price data for the future.
+    if ($nextBuyMs !== null && $nextBuyMs > $x1) {
+        $x1 = $nextBuyMs;
     }
 
     $sx = static function (float $ts) use ($x0, $x1, $pl, $innerW): float {
