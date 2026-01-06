@@ -36,7 +36,7 @@ function renderHeader(string $title): void
     echo '<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">';
     echo '<meta http-equiv="Pragma" content="no-cache">';
     echo '<meta http-equiv="Expires" content="0">';
-    echo '<title>' . h($title) . '</title>';
+    echo '<title>BoringBot | ' . h($title) . '</title>';
     echo '<link rel="icon" href="' . h(dashUrl('favicon.svg')) . '" type="image/svg+xml">';
     echo '<style>
       :root{--bg:#0b1020;--card:#121a33;--text:#e8ecff;--muted:#9aa7d6;--line:#263158;--ok:#41d18b;--warn:#ffcd57;--bad:#ff6b6b;}
