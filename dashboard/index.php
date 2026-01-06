@@ -415,7 +415,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
     $priceLine = implode(' ', $points);
 
-    $palette = ['#6ea8ff', '#41d18b', '#ffcd57', '#ff6b6b', '#b388ff', '#4dd0e1', '#ff8fab', '#a3e635'];
+    // Purchase overlays: avoid the chart's default blue so annotations stand out.
+    $palette = ['#41d18b', '#ffcd57', '#ff6b6b', '#b388ff', '#4dd0e1', '#ff8fab', '#a3e635', '#6ea8ff'];
 
     echo '<div class="muted" style="margin-top:6px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
     $intervalLabel = $intervalOriginal === $interval ? $interval : ($intervalOriginal . ' → ' . $interval);
@@ -432,9 +433,20 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
 
     echo '<div class="table-wrap" style="margin-top:10px">';
     echo '<svg viewBox="0 0 ' . h((string)$w) . ' ' . h((string)$h) . '" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Price chart">';
-    for ($i = 0; $i <= 4; $i++) {
-        $yy = $pt + ($innerH / 4) * $i;
+    // Horizontal gridlines with round $ ticks (ideally every $100).
+    $tickStep = 100.0;
+    $minTick = floor($minY / $tickStep) * $tickStep;
+    $maxTick = ceil($maxY / $tickStep) * $tickStep;
+    $tickCount = (int)floor((($maxTick - $minTick) / $tickStep) + 1.0000001);
+    if ($tickCount > 80) {
+        $tickStep = 200.0;
+        $minTick = floor($minY / $tickStep) * $tickStep;
+        $maxTick = ceil($maxY / $tickStep) * $tickStep;
+    }
+    for ($v = $minTick; $v <= $maxTick + 1e-9; $v += $tickStep) {
+        $yy = $sy((float)$v);
         echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="rgba(255,255,255,.06)" />';
+        echo '<text x="' . h((string)10) . '" y="' . h((string)($yy + 4)) . '" fill="rgba(255,255,255,.55)" font-size="11">' . h(number_format((float)$v, 0, '.', '')) . '</text>';
     }
     echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
 
@@ -498,7 +510,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
         $title .= 'Px ' . number_format($buyPrice, 2, '.', '');
         echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '"><title>' . h($title) . '</title></circle>';
-        echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
+        // Purchase id label: use a distinct (non-blue) color for readability.
+        echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="#ffcd57" font-size="12">#' . h((string)$id) . '</text>';
         if ($isPrimary) {
             $labelX = $cx + 10;
             $labelAnchor = 'start';
@@ -514,7 +527,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
                 $labelY = $cy - 18;
             }
 
-            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="' . h($labelAnchor) . '" fill="' . h($color) . '" font-size="10">';
+            // Make the primary buy label stand out from the blue price series.
+            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="' . h($labelAnchor) . '" fill="#ffcd57" font-size="10">';
             $line1 = 'Compra #' . (string)$id;
             if ($buyUsdt !== null) {
                 $line1 .= ' — ' . number_format($buyUsdt, 2, '.', '') . ' USDT';
@@ -525,9 +539,6 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             echo '</text>';
         }
     }
-
-    echo '<text x="' . h((string)10) . '" y="' . h((string)($pt + 12)) . '" fill="rgba(255,255,255,.6)" font-size="12">' . h(number_format($maxY, 2, '.', '')) . '</text>';
-    echo '<text x="' . h((string)10) . '" y="' . h((string)($pt + $innerH)) . '" fill="rgba(255,255,255,.6)" font-size="12">' . h(number_format($minY, 2, '.', '')) . '</text>';
 
     echo '</svg></div>';
     echo '<div class="muted" style="margin-top:10px">Línea azul = precio | color = evolución desde compra | punteada = target de venta.</div>';
