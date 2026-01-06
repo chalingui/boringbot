@@ -402,6 +402,25 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $x1 = $x0 + 1;
     }
 
+    // Next DCA marker (based on last purchase created_at + interval days, like the bot does).
+    $nextBuyMs = null;
+    $nextBuyLocal = null;
+    $latest = $db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
+    if (is_array($latest) && isset($latest['created_at'])) {
+        $days = (int)($cfg['strategy']['dca_interval_days'] ?? 7);
+        if ($days > 0) {
+            try {
+                $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
+                $dueAt = $last->add(new DateInterval('P' . $days . 'D'));
+                $nextBuyMs = (float)($dueAt->getTimestamp() * 1000);
+                $nextBuyLocal = $dueAt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i');
+            } catch (Throwable) {
+                $nextBuyMs = null;
+                $nextBuyLocal = null;
+            }
+        }
+    }
+
     $sx = static function (float $ts) use ($x0, $x1, $pl, $innerW): float {
         return $pl + (($ts - $x0) / ($x1 - $x0)) * $innerW;
     };
@@ -447,6 +466,13 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $yy = $sy((float)$v);
         echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="rgba(255,255,255,.06)" />';
         echo '<text x="' . h((string)10) . '" y="' . h((string)($yy + 4)) . '" fill="rgba(255,255,255,.55)" font-size="11">' . h(number_format((float)$v, 0, '.', '')) . '</text>';
+    }
+
+    // Next DCA vertical marker (subtle).
+    if ($nextBuyMs !== null && $nextBuyMs >= $x0 && $nextBuyMs <= $x1) {
+        $nx = $sx($nextBuyMs);
+        echo '<line x1="' . h((string)$nx) . '" y1="' . h((string)$pt) . '" x2="' . h((string)$nx) . '" y2="' . h((string)($pt + $innerH)) . '" stroke="rgba(179,136,255,.45)" stroke-width="1" stroke-dasharray="3 6" />';
+        echo '<text x="' . h((string)($nx + 6)) . '" y="' . h((string)($pt + 14)) . '" fill="rgba(179,136,255,.8)" font-size="11">Próxima compra' . ($nextBuyLocal ? ' (' . h($nextBuyLocal) . ')' : '') . '</text>';
     }
     echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
 
@@ -541,7 +567,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
 
     echo '</svg></div>';
-    echo '<div class="muted" style="margin-top:10px">Línea azul = precio | color = evolución desde compra | punteada = target de venta.</div>';
+    echo '<div class="muted" style="margin-top:10px">Línea azul = precio | color = evolución desde compra | punteada = target de venta | línea violeta = próxima compra.</div>';
     echo '</div>';
 }
 
