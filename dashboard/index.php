@@ -155,7 +155,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
     echo '<div class="card">';
     echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
     echo '<div class="table-wrap"><table><thead><tr>';
-    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Δ %</th><th>Progress</th><th>Profit</th>';
+    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Progress</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
 
     foreach ($rows as $p) {
@@ -164,7 +164,9 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
 
         $targetPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
         $deltaPx = ($lastPrice !== null && $targetPx !== null) ? ($targetPx - $lastPrice) : null; // USDT per ETH
-        $deltaPct = ($lastPrice !== null && $targetPx !== null && $lastPrice > 0) ? ((($targetPx / $lastPrice) - 1.0) * 100.0) : null;
+        $sellQty = $p['sell_qty'] !== null ? (float)$p['sell_qty'] : null;
+        $sellUsdt = $p['sell_usdt'] !== null ? (float)$p['sell_usdt'] : null;
+        $sellAvgPx = ($sellQty !== null && $sellUsdt !== null && $sellQty > 0) ? ($sellUsdt / $sellQty) : null;
 
         echo '<tr id="p' . h((string)$id) . '">';
         echo '<td><a href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
@@ -173,17 +175,20 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         echo '<td>' . h(number_format((float)$p['buy_usdt'], 2, '.', '')) . '</td>';
         echo '<td>' . h(v($p['buy_price'] ?? null)) . '</td>';
         echo '<td>' . h(v($p['buy_qty'] ?? null)) . '</td>';
-        echo '<td>' . h(v($p['sell_price'] ?? null)) . '</td>';
-        echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
+        echo '<td>' . h($targetPx === null ? '—' : number_format($targetPx, 2, '.', '')) . '</td>';
+        if ($status === 'SOLD') {
+            echo '<td>' . h($sellAvgPx === null ? '—' : number_format($sellAvgPx, 2, '.', '')) . '</td>';
+        } else {
+            echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
+        }
 
         if ($deltaPx === null) {
-            echo '<td>—</td><td>—</td>';
+            echo '<td>—</td>';
         } else {
             if ($deltaPx <= 0) {
-                echo '<td><span class="pill OPEN">ready</span></td><td>0.00%</td>';
+                echo '<td><span class="pill OPEN">ready</span></td>';
             } else {
                 echo '<td>' . h(number_format($deltaPx, 2, '.', '')) . ' USDT/ETH</td>';
-                echo '<td>' . h($deltaPct === null ? '—' : number_format($deltaPct, 2, '.', '') . '%') . '</td>';
             }
         }
 
@@ -191,7 +196,9 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         $buyPx = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
         $sellPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
         $progress = null;
-        if ($lastPrice !== null && $buyPx !== null && $sellPx !== null && $sellPx > $buyPx) {
+        if ($status === 'SOLD') {
+            $progress = 1.0;
+        } elseif ($lastPrice !== null && $buyPx !== null && $sellPx !== null && $sellPx > $buyPx) {
             $progress = ($lastPrice - $buyPx) / ($sellPx - $buyPx);
             if ($progress < 0) {
                 $progress = 0.0;
@@ -206,9 +213,8 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
             echo '<td><div class="bar" title="' . h((string)$pct) . '%"><span style="width:' . h((string)$pct) . '%"></span></div><div class="muted" style="margin-top:2px">' . h((string)$pct) . '%</div></td>';
         }
 
-        echo '<td>';
-        echo 'profit=' . h(v($p['profit_usdt'] ?? null)) . ' USDT';
-        echo '</td>';
+        $profitUsdt = $p['profit_usdt'] !== null ? (float)$p['profit_usdt'] : null;
+        echo '<td>' . h($profitUsdt === null ? '—' : number_format($profitUsdt, 2, '.', '') . ' USDT') . '</td>';
         echo '</tr>';
     }
 
