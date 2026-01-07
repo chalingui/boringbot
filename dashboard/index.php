@@ -572,7 +572,6 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
 
     echo '</svg></div>';
-    echo '<div class="muted" style="margin-top:10px">Línea azul = precio | color = evolución desde compra | punteada = target de venta | línea violeta = próxima compra.</div>';
     echo '</div>';
 }
 
