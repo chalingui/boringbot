@@ -161,7 +161,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
     foreach ($rows as $p) {
         $id = (int)$p['id'];
         $status = (string)$p['status'];
-        $colorClass = 'pcolor-' . ($id % 6);
+        $colorClass = $status === 'SOLD' ? '' : ('pcolor-' . ($id % 6));
 
         $targetPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
         $deltaPx = ($lastPrice !== null && $targetPx !== null) ? ($targetPx - $lastPrice) : null; // USDT per ETH
@@ -170,7 +170,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         $sellAvgPx = ($sellQty !== null && $sellUsdt !== null && $sellQty > 0) ? ($sellUsdt / $sellQty) : null;
 
         echo '<tr id="p' . h((string)$id) . '" class="purchase-row ' . h($colorClass) . '">';
-        echo '<td><a href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
+        echo '<td><a class="purchase-id" href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '<br><span class="muted">' . h(agoDbDt((string)$p['created_at'])) . '</span></td>';
         echo '<td>' . h(number_format((float)$p['buy_usdt'], 2, '.', '')) . '</td>';
@@ -466,13 +466,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     echo '<div>Symbol: <code>' . h($symbol) . '</code> | interval: <code>' . h($intervalLabel) . '</code> | points: <code>' . h((string)count($series)) . '</code></div>';
     echo '<div>Window: <code>' . h((new DateTimeImmutable('@' . (int)($x0 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code> → <code>' . h((new DateTimeImmutable('@' . (int)($x1 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code></div>';
     echo '</div>';
-    if ($primaryPurchase !== null && is_array($primaryPurchase) && $primaryBuyMs !== null) {
-        $tStr = (string)($primaryPurchase['buy_filled_at'] ?? $primaryPurchase['created_at'] ?? '');
-        $buyPx = $primaryPurchase['buy_price'] !== null ? (float)$primaryPurchase['buy_price'] : null;
-        $buyUsdt = $primaryPurchase['buy_usdt'] !== null ? (float)$primaryPurchase['buy_usdt'] : null;
-        $buyLocal = $tStr !== '' ? fmtDbDt($tStr) : '';
-        echo '<div class="muted" style="margin-top:6px">Compra: <code>#' . h((string)($primaryId ?? '')) . '</code> — <code>' . h($buyLocal) . '</code> — Monto: <code>' . h($buyUsdt !== null ? number_format($buyUsdt, 2, '.', '') : '') . ' USDT</code> — Px: <code>' . h($buyPx !== null ? number_format($buyPx, 2, '.', '') : '') . '</code></div>';
-    }
+    // Intentionally omit detailed purchase legend; chart labels cover ids.
 
     echo '<div class="table-wrap" style="margin-top:10px">';
     echo '<svg viewBox="0 0 ' . h((string)$w) . ' ' . h((string)$h) . '" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Price chart">';
@@ -500,6 +494,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
     echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
 
+    $sellLineOffsets = [];
     foreach ($purchases as $p) {
         $id = (int)$p['id'];
         $buyPrice = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
@@ -532,7 +527,11 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
 
         if ($sellPrice !== null) {
-            $yy = $sy($sellPrice);
+            $key = number_format($sellPrice, 6, '.', '');
+            $idx = $sellLineOffsets[$key] ?? 0;
+            $sellLineOffsets[$key] = $idx + 1;
+            $offsetPx = ($idx % 4) * 2; // small stagger so overlapping sells are visible
+            $yy = $sy($sellPrice) + $offsetPx;
             // Sell target line (solid).
             echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.6" opacity="0.85" />';
         }
@@ -552,38 +551,9 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             echo '<line x1="' . h((string)$cx) . '" y1="' . h((string)$pt) . '" x2="' . h((string)$cx) . '" y2="' . h((string)($pt + $innerH)) . '" stroke="' . h($color) . '" stroke-width="1" opacity="0.35" stroke-dasharray="4 4" />';
         }
 
-        $title = '#' . (string)$id . "\n" . $buyLocalShort . "\n";
-        if ($buyUsdt !== null) {
-            $title .= 'Monto ' . number_format($buyUsdt, 2, '.', '') . " USDT\n";
-        }
-        $title .= 'Px ' . number_format($buyPrice, 2, '.', '');
+        $title = 'Compra #' . (string)$id;
         echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '"><title>' . h($title) . '</title></circle>';
         echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
-        if ($isPrimary) {
-            $labelX = $cx + 10;
-            $labelAnchor = 'start';
-            if ($labelX > ($w - 220)) {
-                $labelX = $cx - 10;
-                $labelAnchor = 'end';
-            }
-            $labelY = $cy - 18;
-            if ($labelY < ($pt + 18)) {
-                $labelY = $cy + 18;
-            }
-            if ($labelY > ($pt + $innerH - 14)) {
-                $labelY = $cy - 18;
-            }
-
-            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="' . h($labelAnchor) . '" fill="' . h($color) . '" font-size="10">';
-            $line1 = 'Compra #' . (string)$id;
-            if ($buyUsdt !== null) {
-                $line1 .= ' — ' . number_format($buyUsdt, 2, '.', '') . ' USDT';
-            }
-            $line1 .= ' — Px ' . number_format($buyPrice, 2, '.', '');
-            echo '<tspan x="' . h((string)$labelX) . '" dy="0">' . h($line1) . '</tspan>';
-            echo '<tspan x="' . h((string)$labelX) . '" dy="12">' . h($buyLocalShort) . '</tspan>';
-            echo '</text>';
-        }
     }
 
     echo '</svg></div>';

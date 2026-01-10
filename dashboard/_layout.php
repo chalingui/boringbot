@@ -75,6 +75,13 @@ function renderHeader(string $title): void
       .purchase-row.pcolor-3 td:first-child{border-left-color:#ff6b6b}
       .purchase-row.pcolor-4 td:first-child{border-left-color:#9fb7ff}
       .purchase-row.pcolor-5 td:first-child{border-left-color:#f48fb1}
+      .purchase-id{font-weight:600}
+      .purchase-row.pcolor-0 .purchase-id{color:#6ea8ff}
+      .purchase-row.pcolor-1 .purchase-id{color:#41d18b}
+      .purchase-row.pcolor-2 .purchase-id{color:#ffcd57}
+      .purchase-row.pcolor-3 .purchase-id{color:#ff6b6b}
+      .purchase-row.pcolor-4 .purchase-id{color:#9fb7ff}
+      .purchase-row.pcolor-5 .purchase-id{color:#f48fb1}
     </style></head><body><div class="wrap">';
     echo '<div class="top"><div class="brand"><a href="' . h(dashUrl()) . '" aria-label="Dashboard home" style="display:inline-flex"><img src="' . h(dashUrl('assets/boringbot-logo.svg')) . '" alt="boringbot"></a><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';
