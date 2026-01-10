@@ -502,7 +502,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
 
     $sellLineOffsets = [];
-    foreach ($purchases as $p) {
+    $sellLines = [];
+    foreach ($purchasesSorted as $p) {
         $id = (int)$p['id'];
         $buyPrice = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
         $sellPrice = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
@@ -519,17 +520,11 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $color = $palette[$id % count($palette)];
 
         if ($sellPrice !== null) {
-            $key = number_format($sellPrice, 6, '.', '');
-            $idx = $sellLineOffsets[$key] ?? 0;
-            $sellLineOffsets[$key] = $idx + 1;
-            $offsets = [0, -8, 8, -16, 16, -24, 24];
-            $offsetPx = $offsets[$idx % count($offsets)];
-            $yy = $sy($sellPrice) + $offsetPx;
-            // Sell target line (solid).
-            echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.6" opacity="0.85" />';
-            $labelX = $w - $pr - 4;
-            $labelY = $yy - 2;
-            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="end" fill="' . h($color) . '" font-size="10">#' . h((string)$id) . '</text>';
+            $sellLines[] = [
+                'id' => $id,
+                'price' => $sellPrice,
+                'color' => $color,
+            ];
         }
 
         if ($buyMs < $x0 || $buyMs > $x1) {
@@ -565,6 +560,24 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $title = 'Compra #' . (string)$id;
         echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '"><title>' . h($title) . '</title></circle>';
         echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
+    }
+
+    // Draw sell target lines last so overlapping lines remain visible.
+    foreach ($sellLines as $line) {
+        $price = (float)$line['price'];
+        $key = number_format($price, 6, '.', '');
+        $idx = $sellLineOffsets[$key] ?? 0;
+        $sellLineOffsets[$key] = $idx + 1;
+        $offsets = [0, -8, 8, -16, 16, -24, 24];
+        $offsetPx = $offsets[$idx % count($offsets)];
+        $yy = $sy($price) + $offsetPx;
+        $color = (string)$line['color'];
+        $id = (int)$line['id'];
+
+        echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.8" opacity="0.95" />';
+        $labelX = $w - $pr - 4;
+        $labelY = $yy - 2;
+        echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="end" fill="' . h($color) . '" font-size="10">#' . h((string)$id) . '</text>';
     }
 
     echo '</svg></div>';
