@@ -396,7 +396,10 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $minY = min($prices);
     $maxY = max($prices);
 
-    foreach ($purchases as $p) {
+    $purchasesSorted = $purchases;
+    usort($purchasesSorted, static fn(array $a, array $b) => ((int)$b['id']) <=> ((int)$a['id']));
+
+    foreach ($purchasesSorted as $p) {
         if ($p['buy_price'] !== null) {
             $minY = min($minY, (float)$p['buy_price']);
             $maxY = max($maxY, (float)$p['buy_price']);
