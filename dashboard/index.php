@@ -513,22 +513,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             continue;
         }
         $buyMs = (float)($buyDt->getTimestamp() * 1000);
-        if ($buyMs < $x0 || $buyMs > $x1) {
-            continue;
-        }
-
         $color = $palette[$id % count($palette)];
-
-        $seg = [];
-        foreach ($series as $ptRow) {
-            if ((float)$ptRow[0] + 1 < $buyMs) {
-                continue;
-            }
-            $seg[] = $sx((float)$ptRow[0]) . ',' . $sy((float)$ptRow[1]);
-        }
-        if (count($seg) >= 2) {
-            echo '<polyline fill="none" stroke="' . h($color) . '" stroke-width="2" opacity="0.85" points="' . h(implode(' ', $seg)) . '" />';
-        }
 
         if ($sellPrice !== null) {
             $key = number_format($sellPrice, 6, '.', '');
@@ -542,6 +527,21 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             $labelX = $w - $pr - 4;
             $labelY = $yy - 2;
             echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="end" fill="' . h($color) . '" font-size="10">#' . h((string)$id) . '</text>';
+        }
+
+        if ($buyMs < $x0 || $buyMs > $x1) {
+            continue;
+        }
+
+        $seg = [];
+        foreach ($series as $ptRow) {
+            if ((float)$ptRow[0] + 1 < $buyMs) {
+                continue;
+            }
+            $seg[] = $sx((float)$ptRow[0]) . ',' . $sy((float)$ptRow[1]);
+        }
+        if (count($seg) >= 2) {
+            echo '<polyline fill="none" stroke="' . h($color) . '" stroke-width="2" opacity="0.85" points="' . h(implode(' ', $seg)) . '" />';
         }
 
         // Buy price reference (same style as sell target line, but ~30% opacity).
