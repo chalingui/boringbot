@@ -178,7 +178,11 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         echo '<td>' . h(v($p['buy_qty'] ?? null)) . '</td>';
         echo '<td>' . h($targetPx === null ? '—' : number_format($targetPx, 2, '.', '')) . '</td>';
         echo '<td>' . h($sellAvgPx === null ? '—' : number_format($sellAvgPx, 2, '.', '')) . '</td>';
-        echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
+        if ($status === 'SOLD') {
+            echo '<td>—</td>';
+        } else {
+            echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
+        }
 
         if ($deltaPx === null) {
             echo '<td>—</td>';
@@ -530,7 +534,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             $key = number_format($sellPrice, 6, '.', '');
             $idx = $sellLineOffsets[$key] ?? 0;
             $sellLineOffsets[$key] = $idx + 1;
-            $offsetPx = ($idx % 4) * 2; // small stagger so overlapping sells are visible
+            $offsets = [0, -4, 4, -8, 8, -12, 12];
+            $offsetPx = $offsets[$idx % count($offsets)];
             $yy = $sy($sellPrice) + $offsetPx;
             // Sell target line (solid).
             echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.6" opacity="0.85" />';
