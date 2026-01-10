@@ -281,25 +281,30 @@ final class PurchaseManager
             } elseif (is_float($wallet) && $wallet > 0) {
                 $effectiveAvail = $wallet;
             }
-            if (is_float($effectiveAvail) && $effectiveAvail >= 0 && $this->sellQtyBuffer > 0) {
-                $bufferedAvail = max(0.0, $effectiveAvail - $this->sellQtyBuffer);
-                if ($bufferedAvail + 1e-12 < $sellQty) {
-                    $sellQty = $bufferedAvail;
+            if (is_float($effectiveAvail) && $effectiveAvail >= 0) {
+                $capAvail = $effectiveAvail;
+                if ($this->sellQtyBuffer > 0) {
+                    $capAvail = max(0.0, $capAvail - $this->sellQtyBuffer);
+                }
+                if ($capAvail + 1e-12 < $sellQty) {
+                    $sellQty = $capAvail;
                     if ($sellQty <= 0) {
                         $this->logger->warn('HOLDING purchase has no available balance after buffer', [
                             'purchase_id' => $p['id'],
                             'available' => is_float($avail) ? $this->fmt8($avail) : null,
                             'wallet_balance' => is_float($wallet) ? $this->fmt8($wallet) : null,
+                            'transfer_balance' => is_float($transfer) ? $this->fmt8($transfer) : null,
                             'buffer' => $this->fmt8($this->sellQtyBuffer),
                         ]);
                         continue;
                     }
-                    $this->logger->info('Applying sell buffer for HOLDING purchase', [
+                    $this->logger->info('Capping HOLDING sell qty to available balance', [
                         'purchase_id' => $p['id'],
                         'recorded_qty' => $this->fmt8($qty),
                         'sell_qty' => $this->fmt8($sellQty),
                         'available' => is_float($avail) ? $this->fmt8($avail) : null,
                         'wallet_balance' => is_float($wallet) ? $this->fmt8($wallet) : null,
+                        'transfer_balance' => is_float($transfer) ? $this->fmt8($transfer) : null,
                         'buffer' => $this->fmt8($this->sellQtyBuffer),
                     ]);
                 }
