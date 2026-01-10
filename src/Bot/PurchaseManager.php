@@ -27,6 +27,7 @@ final class PurchaseManager
         private readonly float $dcaAmountUsdt,
         private readonly int $dcaIntervalDays,
         private readonly float $sellMarkupPct,
+        private readonly float $sellQtyBuffer,
         private readonly int $noFundsLeadHours,
         private readonly bool $dryRun,
     ) {
@@ -192,6 +193,7 @@ final class PurchaseManager
 
             // If fees were taken in base asset, available balance may be slightly lower than recorded qty.
             $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+            $avail = null;
             if ($baseAsset !== '') {
                 $avail = $this->bybit->walletBalance($baseAsset);
                 if (is_float($avail) && $avail >= 0 && $avail + 1e-12 < $qty) {
@@ -227,9 +229,32 @@ final class PurchaseManager
                 }
             }
 
+            $sellQty = $qty;
+            if (is_float($avail) && $avail >= 0 && $this->sellQtyBuffer > 0) {
+                $bufferedAvail = max(0.0, $avail - $this->sellQtyBuffer);
+                if ($bufferedAvail + 1e-12 < $sellQty) {
+                    $sellQty = $bufferedAvail;
+                    if ($sellQty <= 0) {
+                        $this->logger->warn('HOLDING purchase has no available balance after buffer', [
+                            'purchase_id' => $p['id'],
+                            'available' => $this->fmt8($avail),
+                            'buffer' => $this->fmt8($this->sellQtyBuffer),
+                        ]);
+                        continue;
+                    }
+                    $this->logger->info('Applying sell buffer for HOLDING purchase', [
+                        'purchase_id' => $p['id'],
+                        'recorded_qty' => $this->fmt8($qty),
+                        'sell_qty' => $this->fmt8($sellQty),
+                        'available' => $this->fmt8($avail),
+                        'buffer' => $this->fmt8($this->sellQtyBuffer),
+                    ]);
+                }
+            }
+
             $targetPrice = $price * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
             try {
-                $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $qty, $targetPrice);
+                $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $sellQty, $targetPrice);
             } catch (Throwable $e) {
                 $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
                 $avail = null;
@@ -244,7 +269,7 @@ final class PurchaseManager
                     'purchase_id' => $p['id'],
                     'error' => $e->getMessage(),
                     'symbol' => $this->symbolTrade,
-                    'attempt_qty' => $this->fmt8($qty),
+                    'attempt_qty' => $this->fmt8($sellQty),
                     'attempt_price' => $this->fmt8($targetPrice),
                     'base_asset' => $baseAsset,
                     'available_base' => is_float($avail) ? $this->fmt8($avail) : null,
@@ -257,7 +282,7 @@ final class PurchaseManager
                 'purchase_id' => (int)$p['id'],
                 'symbol' => $this->symbolTrade,
                 'sell_order_id' => $sellOrderId,
-                'sell_qty' => $this->fmt8($qty),
+                'sell_qty' => $this->fmt8($sellQty),
                 'sell_price' => $this->fmt8($targetPrice),
                 'sell_markup_pct' => $this->fmt8((float)($p['sell_markup_pct'] ?? 0.0)),
             ]);
@@ -274,7 +299,7 @@ final class PurchaseManager
                     [
                         ':so' => $sellOrderId,
                         ':sp' => $targetPrice,
-                        ':sq' => $qty,
+                        ':sq' => $sellQty,
                         ':st' => self::STATUS_OPEN,
                         ':id' => $p['id'],
                     ]
@@ -283,7 +308,7 @@ final class PurchaseManager
                     'purchase_id' => (int)$p['id'],
                     'sell_order_id' => $sellOrderId,
                     'sell_price' => $this->fmt8($targetPrice),
-                    'sell_qty' => $this->fmt8($qty),
+                    'sell_qty' => $this->fmt8($sellQty),
                     'symbol' => $this->symbolTrade,
                 ]);
                 $this->db->commit();

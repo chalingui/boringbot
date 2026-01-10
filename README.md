@@ -87,6 +87,7 @@ Muestra:
 - Al completarse la venta:
   - `100 USDT` vuelven a `balances.USDT` (capital_pool).
   - `profit = sell_usdt - 100` queda en `balances.USDT` y se acumula como ganancia realizada.
+- Opcional: `SELL_QTY_BUFFER` (default `0.00002`) resta un buffer de ETH al reintentar ventas en `HOLDING` para evitar "Insufficient balance".
 
 ## Base de datos
 - SQLite: `db/boringbot.sqlite`

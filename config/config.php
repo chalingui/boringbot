@@ -22,6 +22,7 @@ return [
         'dca_amount_usdt' => (float)(getenv('DCA_AMOUNT_USDT') ?: 100),
         'dca_interval_days' => (int)(getenv('DCA_INTERVAL_DAYS') ?: 7),
         'sell_markup_pct' => (float)(getenv('SELL_MARKUP_PCT') ?: 5.0),
+        'sell_qty_buffer' => (float)(getenv('SELL_QTY_BUFFER') ?: 0.00002),
     ],
 
     'notify' => [
