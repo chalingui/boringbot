@@ -207,16 +207,27 @@ final class PurchaseManager
             $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
             $avail = null;
             $wallet = null;
+            $transfer = null;
             if ($baseAsset !== '') {
                 $balanceInfo = $this->bybit->walletBalanceInfo($baseAsset);
                 $avail = $balanceInfo['available'] ?? null;
                 $wallet = $balanceInfo['walletBalance'] ?? null;
+                try {
+                    $transfer = $this->bybit->transferBalance($baseAsset);
+                } catch (Throwable $e) {
+                    $this->logger->warn('Transfer balance fetch failed', [
+                        'purchase_id' => $p['id'],
+                        'asset' => $baseAsset,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
                 $this->logger->info('Base asset balance snapshot for HOLDING retry', [
                     'purchase_id' => $p['id'],
                     'asset' => $baseAsset,
                     'available' => $this->fmtNullable($avail),
                     'available_to_transfer' => $this->fmtNullable($balanceInfo['availableToTransfer'] ?? null),
                     'available_to_withdraw' => $this->fmtNullable($balanceInfo['availableToWithdraw'] ?? null),
+                    'transfer_balance' => $this->fmtNullable($transfer),
                     'wallet_balance' => $this->fmtNullable($wallet),
                 ]);
                 if (is_float($avail) && $avail <= 0 && is_float($wallet) && $wallet > 0) {
@@ -263,7 +274,9 @@ final class PurchaseManager
 
             $sellQty = $qty;
             $effectiveAvail = null;
-            if (is_float($avail) && $avail > 0) {
+            if (is_float($transfer) && $transfer > 0) {
+                $effectiveAvail = $transfer;
+            } elseif (is_float($avail) && $avail > 0) {
                 $effectiveAvail = $avail;
             } elseif (is_float($wallet) && $wallet > 0) {
                 $effectiveAvail = $wallet;

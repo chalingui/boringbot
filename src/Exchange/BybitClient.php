@@ -109,6 +109,41 @@ final class BybitClient
         ];
     }
 
+    /**
+     * Raw asset transfer balance response (v5 asset endpoint).
+     */
+    public function transferBalanceRaw(string $accountType, ?string $coin = null): array
+    {
+        $params = ['accountType' => $accountType];
+        if (is_string($coin) && $coin !== '') {
+            $params['coin'] = $coin;
+        }
+        return $this->request('GET', '/v5/asset/transfer/query-account-coins-balance', $params, true);
+    }
+
+    public function transferBalance(string $coin, string $accountType = 'UNIFIED'): ?float
+    {
+        $data = $this->transferBalanceRaw($accountType, $coin);
+        $balance = $data['result']['balance'] ?? null;
+        if (!is_array($balance)) {
+            return null;
+        }
+        foreach ($balance as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            if (($row['coin'] ?? '') !== $coin) {
+                continue;
+            }
+            $value = $row['transferBalance'] ?? null;
+            if ($value === null || $value === '') {
+                return null;
+            }
+            return (float)$value;
+        }
+        return null;
+    }
+
     private function fetchBalanceRow(string $coin): ?array
     {
         try {
