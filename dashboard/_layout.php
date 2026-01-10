@@ -68,6 +68,13 @@ function renderHeader(string $title): void
       .pill.ERROR{border-color:rgba(255,107,107,.4);color:var(--bad)}
       .bar{height:10px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:999px;overflow:hidden}
       .bar > span{display:block;height:100%;background:linear-gradient(90deg,#6ea8ff,#41d18b);width:0%}
+      .purchase-row td:first-child{border-left:3px solid transparent}
+      .purchase-row.pcolor-0 td:first-child{border-left-color:#6ea8ff}
+      .purchase-row.pcolor-1 td:first-child{border-left-color:#41d18b}
+      .purchase-row.pcolor-2 td:first-child{border-left-color:#ffcd57}
+      .purchase-row.pcolor-3 td:first-child{border-left-color:#ff6b6b}
+      .purchase-row.pcolor-4 td:first-child{border-left-color:#9fb7ff}
+      .purchase-row.pcolor-5 td:first-child{border-left-color:#f48fb1}
     </style></head><body><div class="wrap">';
     echo '<div class="top"><div class="brand"><a href="' . h(dashUrl()) . '" aria-label="Dashboard home" style="display:inline-flex"><img src="' . h(dashUrl('assets/boringbot-logo.svg')) . '" alt="boringbot"></a><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';

@@ -155,12 +155,13 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
     echo '<div class="card">';
     echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
     echo '<div class="table-wrap"><table><thead><tr>';
-    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Last Px</th><th>Δ Px</th><th>Progress</th><th>Profit</th>';
+    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Sell Avg Px</th><th>Last Px</th><th>Δ Px</th><th>Progress</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
 
     foreach ($rows as $p) {
         $id = (int)$p['id'];
         $status = (string)$p['status'];
+        $colorClass = 'pcolor-' . ($id % 6);
 
         $targetPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
         $deltaPx = ($lastPrice !== null && $targetPx !== null) ? ($targetPx - $lastPrice) : null; // USDT per ETH
@@ -168,7 +169,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         $sellUsdt = $p['sell_usdt'] !== null ? (float)$p['sell_usdt'] : null;
         $sellAvgPx = ($sellQty !== null && $sellUsdt !== null && $sellQty > 0) ? ($sellUsdt / $sellQty) : null;
 
-        echo '<tr id="p' . h((string)$id) . '">';
+        echo '<tr id="p' . h((string)$id) . '" class="purchase-row ' . h($colorClass) . '">';
         echo '<td><a href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '<br><span class="muted">' . h(agoDbDt((string)$p['created_at'])) . '</span></td>';
@@ -176,11 +177,8 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         echo '<td>' . h(v($p['buy_price'] ?? null)) . '</td>';
         echo '<td>' . h(v($p['buy_qty'] ?? null)) . '</td>';
         echo '<td>' . h($targetPx === null ? '—' : number_format($targetPx, 2, '.', '')) . '</td>';
-        if ($status === 'SOLD') {
-            echo '<td>' . h($sellAvgPx === null ? '—' : number_format($sellAvgPx, 2, '.', '')) . '</td>';
-        } else {
-            echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
-        }
+        echo '<td>' . h($sellAvgPx === null ? '—' : number_format($sellAvgPx, 2, '.', '')) . '</td>';
+        echo '<td>' . h($lastPrice === null ? '—' : number_format($lastPrice, 2, '.', '')) . '</td>';
 
         if ($deltaPx === null) {
             echo '<td>—</td>';
@@ -445,8 +443,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
     $priceLine = implode(' ', $points);
 
-    // Purchase overlays: avoid the chart's default blue so annotations stand out.
-    $palette = ['#41d18b', '#ffcd57', '#ff6b6b', '#b388ff', '#4dd0e1', '#ff8fab', '#a3e635', '#6ea8ff'];
+    // Purchase overlays: keep colors consistent with table accents.
+    $palette = ['#6ea8ff', '#41d18b', '#ffcd57', '#ff6b6b', '#9fb7ff', '#f48fb1'];
 
     echo '<div class="muted" style="margin-top:6px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
     $intervalLabel = $intervalOriginal === $interval ? $interval : ($intervalOriginal . ' → ' . $interval);
@@ -487,7 +485,6 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
     echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
 
-    $i = 0;
     foreach ($purchases as $p) {
         $id = (int)$p['id'];
         $buyPrice = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
@@ -506,8 +503,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             continue;
         }
 
-        $color = $palette[$i % count($palette)];
-        $i++;
+        $color = $palette[$id % count($palette)];
 
         $seg = [];
         foreach ($series as $ptRow) {
@@ -547,8 +543,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
         $title .= 'Px ' . number_format($buyPrice, 2, '.', '');
         echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '"><title>' . h($title) . '</title></circle>';
-        // Purchase id label: use a distinct (non-blue) color for readability.
-        echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="#ffcd57" font-size="12">#' . h((string)$id) . '</text>';
+        echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
         if ($isPrimary) {
             $labelX = $cx + 10;
             $labelAnchor = 'start';
@@ -564,8 +559,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
                 $labelY = $cy - 18;
             }
 
-            // Make the primary buy label stand out from the blue price series.
-            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="' . h($labelAnchor) . '" fill="#ffcd57" font-size="10">';
+            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="' . h($labelAnchor) . '" fill="' . h($color) . '" font-size="10">';
             $line1 = 'Compra #' . (string)$id;
             if ($buyUsdt !== null) {
                 $line1 .= ' — ' . number_format($buyUsdt, 2, '.', '') . ' USDT';
