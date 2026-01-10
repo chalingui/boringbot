@@ -215,7 +215,15 @@ final class PurchaseManager
                     'available' => $this->fmtNullable($avail),
                     'wallet_balance' => $this->fmtNullable($wallet),
                 ]);
-                if (is_float($avail) && $avail >= 0 && $avail + 1e-12 < $qty) {
+                if (is_float($avail) && $avail <= 0 && is_float($wallet) && $wallet > 0) {
+                    $this->logger->warn('Available balance reported as zero; skipping qty adjustment', [
+                        'purchase_id' => $p['id'],
+                        'available' => $this->fmt8($avail),
+                        'wallet_balance' => $this->fmt8($wallet),
+                        'asset' => $baseAsset,
+                    ]);
+                }
+                if (is_float($avail) && $avail > 0 && $avail + 1e-12 < $qty) {
                     $this->logger->warn('Adjusting HOLDING qty to available balance (likely fees)', [
                         'purchase_id' => $p['id'],
                         'recorded_qty' => $this->fmt8($qty),
