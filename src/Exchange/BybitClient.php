@@ -70,6 +70,42 @@ final class BybitClient
 
     public function walletBalance(string $coin): ?float
     {
+        $info = $this->walletBalanceInfo($coin);
+        if ($info === null) {
+            return null;
+        }
+        if (is_float($info['walletBalance'])) {
+            return $info['walletBalance'];
+        }
+        if (is_float($info['available'])) {
+            return $info['available'];
+        }
+        return null;
+    }
+
+    /**
+     * Returns both total wallet balance and available balance (when provided by Bybit).
+     *
+     * @return array{walletBalance: ?float, available: ?float}|null
+     */
+    public function walletBalanceInfo(string $coin): ?array
+    {
+        $row = $this->fetchBalanceRow($coin);
+        if ($row === null) {
+            return null;
+        }
+
+        $wallet = $row['walletBalance'] ?? null;
+        $available = $row['availableToWithdraw'] ?? $row['availableToTransfer'] ?? null;
+
+        return [
+            'walletBalance' => $wallet === null ? null : (float)$wallet,
+            'available' => $available === null ? null : (float)$available,
+        ];
+    }
+
+    private function fetchBalanceRow(string $coin): ?array
+    {
         try {
             $data = $this->request('GET', '/v5/account/wallet-balance', [
                 'accountType' => $this->accountType,
@@ -99,12 +135,7 @@ final class BybitClient
 
         foreach ($list as $row) {
             if (($row['coin'] ?? '') === $coin) {
-                // Prefer walletBalance, fallback to availableToWithdraw/transfer.
-                $bal = $row['walletBalance'] ?? $row['availableToWithdraw'] ?? $row['availableToTransfer'] ?? null;
-                if ($bal === null) {
-                    return null;
-                }
-                return (float)$bal;
+                return is_array($row) ? $row : null;
             }
         }
 

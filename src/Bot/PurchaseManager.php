@@ -109,6 +109,16 @@ final class PurchaseManager
                 $netQty = max(0.0, $qty - $fee);
             }
 
+            if ($baseAsset !== '') {
+                $balanceInfo = $this->bybit->walletBalanceInfo($baseAsset);
+                $this->logger->info('Base asset balance snapshot after buy fill', [
+                    'purchase_id' => $p['id'],
+                    'asset' => $baseAsset,
+                    'available' => $this->fmtNullable($balanceInfo['available'] ?? null),
+                    'wallet_balance' => $this->fmtNullable($balanceInfo['walletBalance'] ?? null),
+                ]);
+            }
+
             $this->logger->info('Buy filled; placing limit sell', [
                 'purchase_id' => $p['id'],
                 'qty' => $this->fmt8($netQty),
@@ -194,13 +204,23 @@ final class PurchaseManager
             // If fees were taken in base asset, available balance may be slightly lower than recorded qty.
             $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
             $avail = null;
+            $wallet = null;
             if ($baseAsset !== '') {
-                $avail = $this->bybit->walletBalance($baseAsset);
+                $balanceInfo = $this->bybit->walletBalanceInfo($baseAsset);
+                $avail = $balanceInfo['available'] ?? null;
+                $wallet = $balanceInfo['walletBalance'] ?? null;
+                $this->logger->info('Base asset balance snapshot for HOLDING retry', [
+                    'purchase_id' => $p['id'],
+                    'asset' => $baseAsset,
+                    'available' => $this->fmtNullable($avail),
+                    'wallet_balance' => $this->fmtNullable($wallet),
+                ]);
                 if (is_float($avail) && $avail >= 0 && $avail + 1e-12 < $qty) {
                     $this->logger->warn('Adjusting HOLDING qty to available balance (likely fees)', [
                         'purchase_id' => $p['id'],
                         'recorded_qty' => $this->fmt8($qty),
                         'available' => $this->fmt8($avail),
+                        'wallet_balance' => is_float($wallet) ? $this->fmt8($wallet) : null,
                         'asset' => $baseAsset,
                     ]);
                     $diff = $qty - $avail;
@@ -230,14 +250,16 @@ final class PurchaseManager
             }
 
             $sellQty = $qty;
-            if (is_float($avail) && $avail >= 0 && $this->sellQtyBuffer > 0) {
-                $bufferedAvail = max(0.0, $avail - $this->sellQtyBuffer);
+            $effectiveAvail = is_float($avail) ? $avail : (is_float($wallet) ? $wallet : null);
+            if (is_float($effectiveAvail) && $effectiveAvail >= 0 && $this->sellQtyBuffer > 0) {
+                $bufferedAvail = max(0.0, $effectiveAvail - $this->sellQtyBuffer);
                 if ($bufferedAvail + 1e-12 < $sellQty) {
                     $sellQty = $bufferedAvail;
                     if ($sellQty <= 0) {
                         $this->logger->warn('HOLDING purchase has no available balance after buffer', [
                             'purchase_id' => $p['id'],
-                            'available' => $this->fmt8($avail),
+                            'available' => is_float($avail) ? $this->fmt8($avail) : null,
+                            'wallet_balance' => is_float($wallet) ? $this->fmt8($wallet) : null,
                             'buffer' => $this->fmt8($this->sellQtyBuffer),
                         ]);
                         continue;
@@ -246,7 +268,8 @@ final class PurchaseManager
                         'purchase_id' => $p['id'],
                         'recorded_qty' => $this->fmt8($qty),
                         'sell_qty' => $this->fmt8($sellQty),
-                        'available' => $this->fmt8($avail),
+                        'available' => is_float($avail) ? $this->fmt8($avail) : null,
+                        'wallet_balance' => is_float($wallet) ? $this->fmt8($wallet) : null,
                         'buffer' => $this->fmt8($this->sellQtyBuffer),
                     ]);
                 }
@@ -258,9 +281,12 @@ final class PurchaseManager
             } catch (Throwable $e) {
                 $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
                 $avail = null;
+                $wallet = null;
                 if ($baseAsset !== '') {
                     try {
-                        $avail = $this->bybit->walletBalance($baseAsset);
+                        $balanceInfo = $this->bybit->walletBalanceInfo($baseAsset);
+                        $avail = $balanceInfo['available'] ?? null;
+                        $wallet = $balanceInfo['walletBalance'] ?? null;
                     } catch (Throwable) {
                         $avail = null;
                     }
@@ -273,6 +299,7 @@ final class PurchaseManager
                     'attempt_price' => $this->fmt8($targetPrice),
                     'base_asset' => $baseAsset,
                     'available_base' => is_float($avail) ? $this->fmt8($avail) : null,
+                    'wallet_balance_base' => is_float($wallet) ? $this->fmt8($wallet) : null,
                     'recorded_buy_qty' => $this->fmt8((float)($p['buy_qty'] ?? 0.0)),
                 ]);
                 continue;
@@ -369,6 +396,17 @@ final class PurchaseManager
             $profitUsdt = $sellUsdt - $buyUsdt;
             if ($profitUsdt < 0) {
                 $profitUsdt = 0.0;
+            }
+
+            $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+            if ($baseAsset !== '') {
+                $balanceInfo = $this->bybit->walletBalanceInfo($baseAsset);
+                $this->logger->info('Base asset balance snapshot after sell fill', [
+                    'purchase_id' => $p['id'],
+                    'asset' => $baseAsset,
+                    'available' => $this->fmtNullable($balanceInfo['available'] ?? null),
+                    'wallet_balance' => $this->fmtNullable($balanceInfo['walletBalance'] ?? null),
+                ]);
             }
 
             $this->logger->info('Sell filled; realizing principal and profit', [
@@ -592,5 +630,13 @@ final class PurchaseManager
     {
         // Fixed 8 decimals for logs/UI consistency.
         return number_format($n, 8, '.', '');
+    }
+
+    private function fmtNullable(?float $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        return $this->fmt8($value);
     }
 }
