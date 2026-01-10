@@ -115,6 +115,8 @@ final class PurchaseManager
                     'purchase_id' => $p['id'],
                     'asset' => $baseAsset,
                     'available' => $this->fmtNullable($balanceInfo['available'] ?? null),
+                    'available_to_transfer' => $this->fmtNullable($balanceInfo['availableToTransfer'] ?? null),
+                    'available_to_withdraw' => $this->fmtNullable($balanceInfo['availableToWithdraw'] ?? null),
                     'wallet_balance' => $this->fmtNullable($balanceInfo['walletBalance'] ?? null),
                 ]);
             }
@@ -213,6 +215,8 @@ final class PurchaseManager
                     'purchase_id' => $p['id'],
                     'asset' => $baseAsset,
                     'available' => $this->fmtNullable($avail),
+                    'available_to_transfer' => $this->fmtNullable($balanceInfo['availableToTransfer'] ?? null),
+                    'available_to_withdraw' => $this->fmtNullable($balanceInfo['availableToWithdraw'] ?? null),
                     'wallet_balance' => $this->fmtNullable($wallet),
                 ]);
                 if (is_float($avail) && $avail <= 0 && is_float($wallet) && $wallet > 0) {
@@ -258,7 +262,12 @@ final class PurchaseManager
             }
 
             $sellQty = $qty;
-            $effectiveAvail = is_float($avail) ? $avail : (is_float($wallet) ? $wallet : null);
+            $effectiveAvail = null;
+            if (is_float($avail) && $avail > 0) {
+                $effectiveAvail = $avail;
+            } elseif (is_float($wallet) && $wallet > 0) {
+                $effectiveAvail = $wallet;
+            }
             if (is_float($effectiveAvail) && $effectiveAvail >= 0 && $this->sellQtyBuffer > 0) {
                 $bufferedAvail = max(0.0, $effectiveAvail - $this->sellQtyBuffer);
                 if ($bufferedAvail + 1e-12 < $sellQty) {
@@ -413,6 +422,8 @@ final class PurchaseManager
                     'purchase_id' => $p['id'],
                     'asset' => $baseAsset,
                     'available' => $this->fmtNullable($balanceInfo['available'] ?? null),
+                    'available_to_transfer' => $this->fmtNullable($balanceInfo['availableToTransfer'] ?? null),
+                    'available_to_withdraw' => $this->fmtNullable($balanceInfo['availableToWithdraw'] ?? null),
                     'wallet_balance' => $this->fmtNullable($balanceInfo['walletBalance'] ?? null),
                 ]);
             }

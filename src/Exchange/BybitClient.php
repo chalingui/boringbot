@@ -84,9 +84,10 @@ final class BybitClient
     }
 
     /**
-     * Returns both total wallet balance and available balance (when provided by Bybit).
+     * Returns total wallet balance plus available balances reported by Bybit.
+     * "availableToTransfer" should match the UI "Monto transferible" label.
      *
-     * @return array{walletBalance: ?float, available: ?float}|null
+     * @return array{walletBalance: ?float, available: ?float, availableToTransfer: ?float, availableToWithdraw: ?float}|null
      */
     public function walletBalanceInfo(string $coin): ?array
     {
@@ -96,11 +97,15 @@ final class BybitClient
         }
 
         $wallet = $row['walletBalance'] ?? null;
-        $available = $row['availableToWithdraw'] ?? $row['availableToTransfer'] ?? null;
+        $availableToTransfer = $row['availableToTransfer'] ?? null;
+        $availableToWithdraw = $row['availableToWithdraw'] ?? null;
+        $available = $availableToTransfer ?? $availableToWithdraw;
 
         return [
             'walletBalance' => $wallet === null ? null : (float)$wallet,
             'available' => $available === null ? null : (float)$available,
+            'availableToTransfer' => $availableToTransfer === null ? null : (float)$availableToTransfer,
+            'availableToWithdraw' => $availableToWithdraw === null ? null : (float)$availableToWithdraw,
         ];
     }
 
