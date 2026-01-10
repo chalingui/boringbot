@@ -311,7 +311,10 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $limit = 1000;
     }
 
-    $purchases = $db->fetchAll('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 50');
+    $purchases = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL ORDER BY id DESC');
+    if ($purchases === []) {
+        $purchases = $db->fetchAll('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 50');
+    }
     $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
     if (!is_array($primaryPurchase)) {
         $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
@@ -320,13 +323,25 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $startDt = null;
     $primaryBuyMs = null;
     $primaryId = null;
+    $openStart = $db->fetchOne(
+        'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
+         FROM purchases
+         WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL'
+    );
+    if (is_array($openStart) && ($openStart['first_at'] ?? '') !== '') {
+        try {
+            $startDt = new DateTimeImmutable((string)$openStart['first_at'] . ' UTC');
+        } catch (Throwable) {
+            $startDt = null;
+        }
+    }
     if (is_array($primaryPurchase)) {
         $primaryId = isset($primaryPurchase['id']) ? (int)$primaryPurchase['id'] : null;
         $t = (string)($primaryPurchase['buy_filled_at'] ?? $primaryPurchase['created_at'] ?? '');
         if ($t !== '') {
             try {
-                $startDt = new DateTimeImmutable($t . ' UTC');
-                $primaryBuyMs = (float)($startDt->getTimestamp() * 1000);
+                $primaryDt = new DateTimeImmutable($t . ' UTC');
+                $primaryBuyMs = (float)($primaryDt->getTimestamp() * 1000);
             } catch (Throwable) {
                 // ignore
             }
