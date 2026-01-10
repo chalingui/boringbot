@@ -49,6 +49,7 @@ try {
         ':t' => 'RUN_START',
         ':p' => json_encode(['dry_run' => $dryRun], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
     ]);
+    $logger->blankLine();
     $logger->info('Run tick start', ['dry_run' => $dryRun]);
 
     $bybit = new BybitClient(

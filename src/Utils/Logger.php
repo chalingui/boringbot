@@ -28,6 +28,11 @@ final class Logger
         $this->write('ERROR', $message, $context);
     }
 
+    public function blankLine(): void
+    {
+        file_put_contents($this->path, PHP_EOL, FILE_APPEND | LOCK_EX);
+    }
+
     private function write(string $level, string $message, array $context): void
     {
         $ts = date('Y-m-d H:i:s');
