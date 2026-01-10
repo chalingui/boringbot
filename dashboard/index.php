@@ -534,11 +534,14 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             $key = number_format($sellPrice, 6, '.', '');
             $idx = $sellLineOffsets[$key] ?? 0;
             $sellLineOffsets[$key] = $idx + 1;
-            $offsets = [0, -4, 4, -8, 8, -12, 12];
+            $offsets = [0, -8, 8, -16, 16, -24, 24];
             $offsetPx = $offsets[$idx % count($offsets)];
             $yy = $sy($sellPrice) + $offsetPx;
             // Sell target line (solid).
             echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.6" opacity="0.85" />';
+            $labelX = $w - $pr - 4;
+            $labelY = $yy - 2;
+            echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="end" fill="' . h($color) . '" font-size="10">#' . h((string)$id) . '</text>';
         }
 
         // Buy price reference (same style as sell target line, but ~30% opacity).
