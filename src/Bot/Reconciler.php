@@ -20,25 +20,38 @@ final class Reconciler
 
     public function reconcileUsdt(): void
     {
-        $bybitUsdt = $this->bybit->walletBalance('USDT');
-        if ($bybitUsdt === null) {
-            throw new \RuntimeException('Could not fetch Bybit USDT balance.');
+        $this->reconcileAsset('USDT');
+    }
+
+    public function reconcileEth(): void
+    {
+        $this->reconcileAsset('ETH');
+    }
+
+    private function reconcileAsset(string $asset): void
+    {
+        $bybit = $this->bybit->walletBalance($asset);
+        if ($bybit === null) {
+            throw new \RuntimeException('Could not fetch Bybit ' . $asset . ' balance.');
         }
 
-        $bot = $this->getBalance('USDT');
-        $delta = $bybitUsdt - $bot;
+        $bot = $this->getBalance($asset);
+        $delta = $bybit - $bot;
 
+        $key = strtolower($asset);
         $this->logger->info('Reconcile fetched Bybit balance', [
-            'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
-            'bot_usdt' => number_format($bot, 8, '.', ''),
+            'asset' => $asset,
+            'bybit' => number_format($bybit, 8, '.', ''),
+            'bot' => number_format($bot, 8, '.', ''),
             'delta' => number_format(max(0.0, $delta), 8, '.', ''),
             'dry_run' => $this->dryRun,
         ]);
 
         if ($delta <= 0) {
             $this->insertEvent('RECONCILE', [
-                'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
-                'bot_usdt' => number_format($bot, 8, '.', ''),
+                'asset' => $asset,
+                'bybit_' . $key => number_format($bybit, 8, '.', ''),
+                'bot_' . $key => number_format($bot, 8, '.', ''),
                 'delta' => 0,
                 'note' => 'No positive delta; no update.',
                 'dry_run' => $this->dryRun,
@@ -48,10 +61,11 @@ final class Reconciler
 
         if ($this->dryRun) {
             $this->insertEvent('RECONCILE', [
-                'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
-                'bot_usdt' => number_format($bot, 8, '.', ''),
+                'asset' => $asset,
+                'bybit_' . $key => number_format($bybit, 8, '.', ''),
+                'bot_' . $key => number_format($bot, 8, '.', ''),
                 'delta' => number_format($delta, 8, '.', ''),
-                'note' => 'Dry-run; would increase balances.USDT.',
+                'note' => 'Dry-run; would increase balances.' . $asset . '.',
                 'dry_run' => true,
             ]);
             return;
@@ -59,12 +73,13 @@ final class Reconciler
 
         try {
             $this->db->begin();
-            $this->addBalance('USDT', $delta);
+            $this->addBalance($asset, $delta);
             $this->insertEvent('RECONCILE', [
-                'bybit_usdt' => number_format($bybitUsdt, 8, '.', ''),
-                'bot_usdt' => number_format($bot, 8, '.', ''),
+                'asset' => $asset,
+                'bybit_' . $key => number_format($bybit, 8, '.', ''),
+                'bot_' . $key => number_format($bot, 8, '.', ''),
                 'delta' => number_format($delta, 8, '.', ''),
-                'new_bot_usdt' => number_format($bot + $delta, 8, '.', ''),
+                'new_bot_' . $key => number_format($bot + $delta, 8, '.', ''),
                 'dry_run' => false,
             ]);
             $this->db->commit();
