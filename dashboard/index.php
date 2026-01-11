@@ -471,7 +471,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     // Extra chart (Chart.js) for clearer stacked sell lines.
     static $chartJsIncluded = false;
     if (!$chartJsIncluded) {
-        echo '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-hR7c2uyVx3LDlKxU3F0YBmxtSPoaqe7i0rJUPsCvtwWqdTX/P1y5h9FMU1uTtdG0" crossorigin="anonymous"></script>';
+        echo '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>';
         $chartJsIncluded = true;
     }
     $chartSeries = [];
