@@ -483,8 +483,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $chartMarkers = [];
     $chartOpenLines = [];
     $lastPurchaseMs = null;
-    $lastPurchaseMs = null;
-    $chartPriceSegments = [];
+    $openStartMs = null;
+    $maxPurchaseId = null;
     $sortedForChart = $purchasesSorted;
     usort($sortedForChart, static fn(array $a, array $b) => ((int)$a['id']) <=> ((int)$b['id']));
     foreach ($sortedForChart as $pRow) {
@@ -500,11 +500,14 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
         $ms = (float)($dt->getTimestamp() * 1000);
         $chartMarkers[] = ['id' => $id, 'ms' => $ms, 'color' => $palette[$id % count($palette)]];
-        if ($lastPurchaseMs === null || $ms > $lastPurchaseMs) {
-            $lastPurchaseMs = $ms;
+        if ($openStartMs === null || $ms < $openStartMs) {
+            $openStartMs = $ms;
         }
         if ($lastPurchaseMs === null || $ms > $lastPurchaseMs) {
             $lastPurchaseMs = $ms;
+        }
+        if ($maxPurchaseId === null || $id > $maxPurchaseId) {
+            $maxPurchaseId = $id;
         }
     }
     foreach ($purchasesSorted as $pRow) {
@@ -533,8 +536,14 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $chartId = 'chartjs-overlay';
     $xMin = $x0;
     $xMax = $x1;
+    if ($openStartMs !== null) {
+        $xMin = $openStartMs;
+    }
+    if ($nextBuyMs !== null) {
+        $xMax = $nextBuyMs;
+    }
     echo '<div style="margin-bottom:8px">';
-    echo '<canvas id="' . h($chartId) . '" height="120"></canvas>';
+    echo '<canvas id="' . h($chartId) . '" height="100"></canvas>';
     echo '<script>
       (function(){
         const ctx = document.getElementById("' . h($chartId) . '").getContext("2d");
@@ -547,7 +556,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         const markers = ' . json_encode($chartMarkers, JSON_UNESCAPED_SLASHES) . ';
         const lastBuyMs = ' . json_encode($lastPurchaseMs) . ';
         const nextBuy = ' . json_encode($nextBuyMs) . ';
-        const nextBuyColor = ' . json_encode($palette[(($primaryId ?? 0) + 1) % count($palette)]) . ';
+        const nextBuyColor = ' . json_encode($palette[(($maxPurchaseId ?? 0) + 1) % count($palette)]) . ';
         const datasets = [];
         const sortedMarkers = markers.slice().sort((a,b)=>a.ms-b.ms);
         const priceSegments = [];
@@ -582,8 +591,6 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
                 borderWidth: 1.6,
                 pointRadius: 0,
                 tension: 0,
-                _labelText: "#"+o.id,
-                _labelColor: o.color,
               });
             });
           });
@@ -612,6 +619,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
               tension: 0,
               _labelText: "#"+b.id,
               _labelColor: b.color,
+              _labelX: b.ms || xMin,
+              _labelY: b.price,
             });
         });
         markers.forEach((m) => {
@@ -648,12 +657,10 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             label: "#"+s.id+" sell",
             data: [{x: s.ms || xMin, y: s.price}, {x: xMax, y: s.price}],
             borderColor: s.color,
-            borderWidth: 1.2,
+            borderWidth: 1.0,
             pointRadius: 0,
             fill: false,
             tension: 0,
-            _labelText: "#"+s.id,
-            _labelColor: s.color,
           });
         });
         const labelPlugin = {
@@ -664,7 +671,14 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
               if (!ds._labelText) return;
               const meta = chart.getDatasetMeta(i);
               if (!meta || meta.data.length === 0) return;
-              const pt = meta.data[meta.data.length - 1];
+              let pt = null;
+              if (ds._labelX !== undefined && ds._labelY !== undefined) {
+                pt = chart.scales.x && chart.scales.y
+                  ? {x: chart.scales.x.getPixelForValue(ds._labelX), y: chart.scales.y.getPixelForValue(ds._labelY)}
+                  : null;
+              } else {
+                pt = meta.data[meta.data.length - 1];
+              }
               if (!pt) return;
               ctx.save();
               ctx.fillStyle = ds._labelColor || "#9aa7d6";
@@ -711,120 +725,6 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     </script>';
     echo '</div>';
 
-    echo '<div class="muted" style="margin-top:6px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
-    $intervalLabel = $intervalOriginal === $interval ? $interval : ($intervalOriginal . ' → ' . $interval);
-    echo '<div>Symbol: <code>' . h($symbol) . '</code> | interval: <code>' . h($intervalLabel) . '</code> | points: <code>' . h((string)count($series)) . '</code></div>';
-    echo '<div>Window: <code>' . h((new DateTimeImmutable('@' . (int)($x0 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code> → <code>' . h((new DateTimeImmutable('@' . (int)($x1 / 1000)))->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i')) . '</code></div>';
-    echo '</div>';
-    // Intentionally omit detailed purchase legend; chart labels cover ids.
-
-    echo '<div class="table-wrap" style="margin-top:10px">';
-    echo '<svg viewBox="0 0 ' . h((string)$w) . ' ' . h((string)$h) . '" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Price chart">';
-    // Horizontal gridlines with round $ ticks (ideally every $100).
-    $tickStep = 100.0;
-    $minTick = floor($minY / $tickStep) * $tickStep;
-    $maxTick = ceil($maxY / $tickStep) * $tickStep;
-    $tickCount = (int)floor((($maxTick - $minTick) / $tickStep) + 1.0000001);
-    if ($tickCount > 80) {
-        $tickStep = 200.0;
-        $minTick = floor($minY / $tickStep) * $tickStep;
-        $maxTick = ceil($maxY / $tickStep) * $tickStep;
-    }
-    for ($v = $minTick; $v <= $maxTick + 1e-9; $v += $tickStep) {
-        $yy = $sy((float)$v);
-        echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="rgba(255,255,255,.06)" />';
-        echo '<text x="' . h((string)10) . '" y="' . h((string)($yy + 4)) . '" fill="rgba(255,255,255,.55)" font-size="11">' . h(number_format((float)$v, 0, '.', '')) . '</text>';
-    }
-
-    // Next DCA vertical marker (subtle).
-    if ($nextBuyMs !== null && $nextBuyMs >= $x0 && $nextBuyMs <= $x1) {
-        $nx = $sx($nextBuyMs);
-        echo '<line x1="' . h((string)$nx) . '" y1="' . h((string)$pt) . '" x2="' . h((string)$nx) . '" y2="' . h((string)($pt + $innerH)) . '" stroke="rgba(179,136,255,.45)" stroke-width="1" stroke-dasharray="3 6" />';
-        echo '<text x="' . h((string)($nx + 6)) . '" y="' . h((string)($pt + 14)) . '" fill="rgba(179,136,255,.8)" font-size="11">Próxima compra' . ($nextBuyLocal ? ' (' . h($nextBuyLocal) . ')' : '') . '</text>';
-    }
-    echo '<polyline fill="none" stroke="rgba(159,183,255,.35)" stroke-width="2" points="' . h($priceLine) . '" />';
-
-    $sellLineOffsets = [];
-    $sellLines = [];
-    foreach ($purchasesSorted as $p) {
-        $id = (int)$p['id'];
-        $buyPrice = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
-        $sellPrice = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
-        $tStr = (string)($p['buy_filled_at'] ?? $p['created_at'] ?? '');
-        if ($tStr === '' || $buyPrice === null) {
-            continue;
-        }
-        try {
-            $buyDt = new DateTimeImmutable($tStr . ' UTC');
-        } catch (Throwable) {
-            continue;
-        }
-        $buyMs = (float)($buyDt->getTimestamp() * 1000);
-        $color = $palette[$id % count($palette)];
-
-        if ($sellPrice !== null && in_array((string)$p['status'], ['OPEN', 'HOLDING'], true)) {
-            $sellLines[] = [
-                'id' => $id,
-                'price' => $sellPrice,
-                'color' => $color,
-            ];
-        }
-
-        if ($buyMs < $x0 || $buyMs > $x1) {
-            continue;
-        }
-
-        $seg = [];
-        foreach ($series as $ptRow) {
-            if ((float)$ptRow[0] + 1 < $buyMs) {
-                continue;
-            }
-            $seg[] = $sx((float)$ptRow[0]) . ',' . $sy((float)$ptRow[1]);
-        }
-        if (count($seg) >= 2) {
-            echo '<polyline fill="none" stroke="' . h($color) . '" stroke-width="2" opacity="0.85" points="' . h(implode(' ', $seg)) . '" />';
-        }
-
-        // Buy price reference (same style as sell target line, but ~30% opacity).
-        $by = $sy($buyPrice);
-        echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$by) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$by) . '" stroke="' . h($color) . '" stroke-width="1.6" opacity="0.30" />';
-
-        $cx = $sx($buyMs);
-        $cy = $sy($buyPrice);
-        $buyLocalShort = $buyDt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i');
-        $buyUsdt = $p['buy_usdt'] !== null ? (float)$p['buy_usdt'] : null;
-
-        $isPrimary = $primaryId !== null && $id === $primaryId;
-        if ($isPrimary) {
-            // Buy time marker (vertical) to make the "momento de compra" visible in the chart.
-            echo '<line x1="' . h((string)$cx) . '" y1="' . h((string)$pt) . '" x2="' . h((string)$cx) . '" y2="' . h((string)($pt + $innerH)) . '" stroke="' . h($color) . '" stroke-width="1" opacity="0.35" stroke-dasharray="4 4" />';
-        }
-
-        $title = 'Compra #' . (string)$id;
-        echo '<circle cx="' . h((string)$cx) . '" cy="' . h((string)$cy) . '" r="4" fill="' . h($color) . '"><title>' . h($title) . '</title></circle>';
-        echo '<text x="' . h((string)($cx + 6)) . '" y="' . h((string)($cy - 6)) . '" fill="' . h($color) . '" font-size="12">#' . h((string)$id) . '</text>';
-    }
-
-    // Draw sell target lines last so overlapping lines remain visible.
-    foreach ($sellLines as $line) {
-        $price = (float)$line['price'];
-        $key = number_format($price, 6, '.', '');
-        $idx = $sellLineOffsets[$key] ?? 0;
-        $sellLineOffsets[$key] = $idx + 1;
-        $offsets = [0, -8, 8, -16, 16, -24, 24, -32, 32];
-        $offsetPx = $offsets[$idx % count($offsets)];
-        $yy = $sy($price) + $offsetPx;
-        $color = (string)$line['color'];
-        $id = (int)$line['id'];
-
-        echo '<line x1="' . h((string)$pl) . '" y1="' . h((string)$yy) . '" x2="' . h((string)($w - $pr)) . '" y2="' . h((string)$yy) . '" stroke="' . h($color) . '" stroke-width="1.8" opacity="0.95" />';
-        $labelX = $w - $pr - 4;
-        $labelY = $yy - 2;
-        echo '<text x="' . h((string)$labelX) . '" y="' . h((string)$labelY) . '" text-anchor="end" fill="' . h($color) . '" font-size="10">#' . h((string)$id) . '</text>';
-    }
-
-    echo '</svg></div>';
-    echo '</div>';
 }
 
 if ($view === 'purchases') {
