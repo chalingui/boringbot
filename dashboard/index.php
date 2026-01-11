@@ -555,7 +555,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
         if (openLines.length > 0) {
           const offsets = [-1.5, 1.5, -3.0, 3.0];
-          openLines.forEach((o, i) => {
+          const openSorted = openLines.slice().sort((a, b) => a.id - b.id);
+          openSorted.forEach((o, i) => {
             const off = offsets[i % offsets.length];
             priceSegments.forEach((seg) => {
               const data = seg.data.map((p) => {
