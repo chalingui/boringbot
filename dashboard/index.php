@@ -513,11 +513,20 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $buyPx = $pRow['buy_price'] !== null ? (float)$pRow['buy_price'] : null;
         $sellPx = $pRow['sell_price'] !== null ? (float)$pRow['sell_price'] : null;
         $status = (string)($pRow['status'] ?? '');
+        $tStr = (string)($pRow['buy_filled_at'] ?? $pRow['created_at'] ?? '');
+        $buyMs = null;
+        if ($tStr !== '') {
+            try {
+                $buyMs = (float)((new DateTimeImmutable($tStr . ' UTC'))->getTimestamp() * 1000);
+            } catch (Throwable) {
+                $buyMs = null;
+            }
+        }
         if ($buyPx !== null) {
-            $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color];
+            $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color, 'ms' => $buyMs];
         }
         if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
-            $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color];
+            $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color, 'ms' => $buyMs];
             $chartOpenLines[] = ['id' => $id, 'color' => $color];
         }
     }
@@ -594,7 +603,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         buys.forEach((b) => {
             datasets.push({
               label: "#"+b.id+" buy",
-              data: [{x: xMin, y: b.price}, {x: xMax, y: b.price}],
+              data: [{x: b.ms || xMin, y: b.price}, {x: xMax, y: b.price}],
               borderColor: b.color,
               borderWidth: 1.2,
               borderDash: [4,4],
@@ -637,7 +646,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
           const y = s.price + 0 * off; // use pixel offset via segment styles instead
           datasets.push({
             label: "#"+s.id+" sell",
-            data: [{x: xMin, y: s.price}, {x: xMax, y: s.price}],
+            data: [{x: s.ms || xMin, y: s.price}, {x: xMax, y: s.price}],
             borderColor: s.color,
             borderWidth: 1.2,
             pointRadius: 0,
