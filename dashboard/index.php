@@ -480,6 +480,24 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
     $chartBuyLines = [];
     $chartSellLines = [];
+    $chartMarkers = [];
+    $chartPriceSegments = [];
+    $sortedForChart = $purchasesSorted;
+    usort($sortedForChart, static fn(array $a, array $b) => ((int)$a['id']) <=> ((int)$b['id']));
+    foreach ($sortedForChart as $pRow) {
+        $id = (int)$pRow['id'];
+        $tStr = (string)($pRow['buy_filled_at'] ?? $pRow['created_at'] ?? '');
+        if ($tStr === '') {
+            continue;
+        }
+        try {
+            $dt = new DateTimeImmutable($tStr . ' UTC');
+        } catch (Throwable) {
+            continue;
+        }
+        $ms = (float)($dt->getTimestamp() * 1000);
+        $chartMarkers[] = ['id' => $id, 'ms' => $ms, 'color' => $palette[$id % count($palette)]];
+    }
     foreach ($purchasesSorted as $pRow) {
         $id = (int)$pRow['id'];
         $color = $palette[$id % count($palette)];
@@ -507,25 +525,58 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         const sells = ' . json_encode($chartSellLines, JSON_UNESCAPED_SLASHES) . ';
         const xMin = ' . json_encode($xMin) . ';
         const xMax = ' . json_encode($xMax) . ';
-        const datasets = [{
-          label: "Price",
-          data: priceData,
-          borderColor: "rgba(159,183,255,0.7)",
-          backgroundColor: "transparent",
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0,
-        }];
-        buys.forEach((b) => {
+        const markers = ' . json_encode($chartMarkers, JSON_UNESCAPED_SLASHES) . ';
+        const datasets = [];
+        const sortedMarkers = markers.slice().sort((a,b)=>a.ms-b.ms);
+        if (sortedMarkers.length === 0) {
           datasets.push({
-            label: "#"+b.id+" buy",
-            data: [{x: xMin, y: b.price}, {x: xMax, y: b.price}],
-            borderColor: b.color,
-            borderWidth: 1.2,
-            borderDash: [6,6],
+            label: "Price",
+            data: priceData,
+            borderColor: "rgba(159,183,255,0.7)",
+            backgroundColor: "transparent",
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0,
+          });
+        } else {
+          for (let i = 0; i < sortedMarkers.length; i++) {
+            const start = sortedMarkers[i].ms;
+            const end = (i + 1 < sortedMarkers.length) ? sortedMarkers[i + 1].ms : xMax;
+            const seg = priceData.filter(p => p.x >= start && p.x <= end);
+            if (seg.length < 2) continue;
+            datasets.push({
+              label: "Price #"+sortedMarkers[i].id,
+              data: seg,
+              borderColor: sortedMarkers[i].color,
+              backgroundColor: "transparent",
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0,
+            });
+          }
+        }
+        buys.forEach((b) => {
+            datasets.push({
+              label: "#"+b.id+" buy",
+              data: [{x: xMin, y: b.price}, {x: xMax, y: b.price}],
+              borderColor: b.color,
+              borderWidth: 1.2,
+              borderDash: [6,6],
+              pointRadius: 0,
+              fill: false,
+              tension: 0,
+            });
+        });
+        markers.forEach((m) => {
+          datasets.push({
+            label: "#"+m.id+" time",
+            data: [{x: m.ms, y: 0}, {x: m.ms, y: 1}],
+            borderColor: m.color,
+            borderWidth: 1,
             pointRadius: 0,
             fill: false,
             tension: 0,
+            yAxisID: "yLine",
           });
         });
         sells.forEach((s, idx) => {
@@ -560,6 +611,11 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
               },
               y: {
                 ticks: { callback: (v) => v.toFixed(0) }
+              },
+              yLine: {
+                display: false,
+                min: 0,
+                max: 1,
               }
             },
             interaction: { mode: "nearest", intersect: false },
