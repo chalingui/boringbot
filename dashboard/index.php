@@ -468,6 +468,108 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     // Purchase overlays: keep colors consistent with table accents.
     $palette = ['#6ea8ff', '#41d18b', '#ffcd57', '#ff6b6b', '#9fb7ff', '#f48fb1'];
 
+    // Extra chart (Chart.js) for clearer stacked sell lines.
+    static $chartJsIncluded = false;
+    if (!$chartJsIncluded) {
+        echo '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-hR7c2uyVx3LDlKxU3F0YBmxtSPoaqe7i0rJUPsCvtwWqdTX/P1y5h9FMU1uTtdG0" crossorigin="anonymous"></script>';
+        $chartJsIncluded = true;
+    }
+    $chartSeries = [];
+    foreach ($series as $ptRow) {
+        $chartSeries[] = ['x' => (float)$ptRow[0], 'y' => (float)$ptRow[1]];
+    }
+    $chartBuyLines = [];
+    $chartSellLines = [];
+    foreach ($purchasesSorted as $pRow) {
+        $id = (int)$pRow['id'];
+        $color = $palette[$id % count($palette)];
+        $buyPx = $pRow['buy_price'] !== null ? (float)$pRow['buy_price'] : null;
+        $sellPx = $pRow['sell_price'] !== null ? (float)$pRow['sell_price'] : null;
+        $status = (string)($pRow['status'] ?? '');
+        if ($buyPx !== null) {
+            $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color];
+        }
+        if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
+            $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color];
+        }
+    }
+    $chartId = 'chartjs-overlay';
+    $xMin = $x0;
+    $xMax = $x1;
+    echo '<div class="card" style="margin-bottom:12px">';
+    echo '<div class="muted">Precio (Chart.js)</div>';
+    echo '<canvas id="' . h($chartId) . '" height="260"></canvas>';
+    echo '<script>
+      (function(){
+        const ctx = document.getElementById("' . h($chartId) . '").getContext("2d");
+        const priceData = ' . json_encode($chartSeries, JSON_UNESCAPED_SLASHES) . ';
+        const buys = ' . json_encode($chartBuyLines, JSON_UNESCAPED_SLASHES) . ';
+        const sells = ' . json_encode($chartSellLines, JSON_UNESCAPED_SLASHES) . ';
+        const xMin = ' . json_encode($xMin) . ';
+        const xMax = ' . json_encode($xMax) . ';
+        const datasets = [{
+          label: "Price",
+          data: priceData,
+          borderColor: "rgba(159,183,255,0.7)",
+          backgroundColor: "transparent",
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        }];
+        buys.forEach((b) => {
+          datasets.push({
+            label: "#"+b.id+" buy",
+            data: [{x: xMin, y: b.price}, {x: xMax, y: b.price}],
+            borderColor: b.color,
+            borderWidth: 1.2,
+            borderDash: [6,6],
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+          });
+        });
+        sells.forEach((s, idx) => {
+          const offsets = [0, -8, 8, -16, 16, -24, 24, -32, 32];
+          const off = offsets[idx % offsets.length];
+          const y = s.price + 0 * off; // use pixel offset via segment styles instead
+          datasets.push({
+            label: "#"+s.id+" sell",
+            data: [{x: xMin, y: s.price}, {x: xMax, y: s.price}],
+            borderColor: s.color,
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+          });
+        });
+        new Chart(ctx, {
+          type: "line",
+          data: { datasets },
+          options: {
+            animation: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: {
+                type: "linear",
+                ticks: {
+                  callback: (val) => {
+                    const d = new Date(val);
+                    return d.toLocaleDateString(undefined,{month:"short",day:"numeric"});
+                  }
+                },
+              },
+              y: {
+                ticks: { callback: (v) => v.toFixed(0) }
+              }
+            },
+            interaction: { mode: "nearest", intersect: false },
+            elements: { line: { cubicInterpolationMode: "monotone" } }
+          }
+        });
+      })();
+    </script>';
+    echo '</div>';
+
     echo '<div class="muted" style="margin-top:6px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">';
     $intervalLabel = $intervalOriginal === $interval ? $interval : ($intervalOriginal . ' → ' . $interval);
     echo '<div>Symbol: <code>' . h($symbol) . '</code> | interval: <code>' . h($intervalLabel) . '</code> | points: <code>' . h((string)count($series)) . '</code></div>';
