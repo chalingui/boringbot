@@ -519,7 +519,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $buyMs = (float)($buyDt->getTimestamp() * 1000);
         $color = $palette[$id % count($palette)];
 
-        if ($sellPrice !== null) {
+        if ($sellPrice !== null && in_array((string)$p['status'], ['OPEN', 'HOLDING'], true)) {
             $sellLines[] = [
                 'id' => $id,
                 'price' => $sellPrice,
@@ -568,7 +568,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $key = number_format($price, 6, '.', '');
         $idx = $sellLineOffsets[$key] ?? 0;
         $sellLineOffsets[$key] = $idx + 1;
-        $offsets = [0, -8, 8, -16, 16, -24, 24];
+        $offsets = [0, -8, 8, -16, 16, -24, 24, -32, 32];
         $offsetPx = $offsets[$idx % count($offsets)];
         $yy = $sy($price) + $offsetPx;
         $color = (string)$line['color'];
