@@ -481,6 +481,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $chartBuyLines = [];
     $chartSellLines = [];
     $chartMarkers = [];
+    $chartOpenColors = [];
     $chartPriceSegments = [];
     $sortedForChart = $purchasesSorted;
     usort($sortedForChart, static fn(array $a, array $b) => ((int)$a['id']) <=> ((int)$b['id']));
@@ -509,51 +510,66 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
         if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
             $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color];
+            $chartOpenColors[$color] = true;
         }
     }
     $chartId = 'chartjs-overlay';
     $xMin = $x0;
     $xMax = $x1;
-    echo '<div class="card" style="margin-bottom:12px">';
-    echo '<div class="muted">Precio (Chart.js)</div>';
-    echo '<canvas id="' . h($chartId) . '" height="260"></canvas>';
+    echo '<div style="margin-bottom:8px">';
+    echo '<canvas id="' . h($chartId) . '" height="200"></canvas>';
     echo '<script>
       (function(){
         const ctx = document.getElementById("' . h($chartId) . '").getContext("2d");
         const priceData = ' . json_encode($chartSeries, JSON_UNESCAPED_SLASHES) . ';
         const buys = ' . json_encode($chartBuyLines, JSON_UNESCAPED_SLASHES) . ';
         const sells = ' . json_encode($chartSellLines, JSON_UNESCAPED_SLASHES) . ';
+        const openColors = ' . json_encode(array_values(array_keys($chartOpenColors)), JSON_UNESCAPED_SLASHES) . ';
         const xMin = ' . json_encode($xMin) . ';
         const xMax = ' . json_encode($xMax) . ';
         const markers = ' . json_encode($chartMarkers, JSON_UNESCAPED_SLASHES) . ';
         const datasets = [];
         const sortedMarkers = markers.slice().sort((a,b)=>a.ms-b.ms);
+        const priceSegments = [];
         if (sortedMarkers.length === 0) {
-          datasets.push({
-            label: "Price",
-            data: priceData,
-            borderColor: "rgba(159,183,255,0.7)",
-            backgroundColor: "transparent",
-            borderWidth: 1.5,
-            pointRadius: 0,
-            tension: 0,
-          });
+          priceSegments.push({label:"Price", data: priceData, color:"rgba(159,183,255,0.7)"});
         } else {
           for (let i = 0; i < sortedMarkers.length; i++) {
             const start = sortedMarkers[i].ms;
             const end = (i + 1 < sortedMarkers.length) ? sortedMarkers[i + 1].ms : xMax;
             const seg = priceData.filter(p => p.x >= start && p.x <= end);
             if (seg.length < 2) continue;
+            priceSegments.push({label: "Price #"+sortedMarkers[i].id, data: seg, color: sortedMarkers[i].color});
+          }
+        }
+        if (openColors.length > 0) {
+          const offsets = [-0.4, 0.4, -0.8, 0.8];
+          openColors.forEach((c, i) => {
+            const off = offsets[i % offsets.length];
+            priceSegments.forEach((seg) => {
+              datasets.push({
+                label: seg.label+" open",
+                data: seg.data.map(p => ({x: p.x, y: p.y + off})),
+                borderColor: c,
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0,
+              });
+            });
+          });
+        } else {
+          priceSegments.forEach((seg) => {
             datasets.push({
-              label: "Price #"+sortedMarkers[i].id,
-              data: seg,
-              borderColor: sortedMarkers[i].color,
+              label: seg.label,
+              data: seg.data,
+              borderColor: seg.color,
               backgroundColor: "transparent",
               borderWidth: 2,
               pointRadius: 0,
               tension: 0,
             });
-          }
+          });
         }
         buys.forEach((b) => {
             datasets.push({
