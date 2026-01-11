@@ -482,6 +482,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $chartSellLines = [];
     $chartMarkers = [];
     $chartOpenColors = [];
+    $lastPurchaseMs = null;
     $chartPriceSegments = [];
     $sortedForChart = $purchasesSorted;
     usort($sortedForChart, static fn(array $a, array $b) => ((int)$a['id']) <=> ((int)$b['id']));
@@ -498,6 +499,9 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
         $ms = (float)($dt->getTimestamp() * 1000);
         $chartMarkers[] = ['id' => $id, 'ms' => $ms, 'color' => $palette[$id % count($palette)]];
+        if ($lastPurchaseMs === null || $ms > $lastPurchaseMs) {
+            $lastPurchaseMs = $ms;
+        }
     }
     foreach ($purchasesSorted as $pRow) {
         $id = (int)$pRow['id'];
@@ -517,7 +521,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $xMin = $x0;
     $xMax = $x1;
     echo '<div style="margin-bottom:8px">';
-    echo '<canvas id="' . h($chartId) . '" height="200"></canvas>';
+    echo '<canvas id="' . h($chartId) . '" height="170"></canvas>';
     echo '<script>
       (function(){
         const ctx = document.getElementById("' . h($chartId) . '").getContext("2d");
@@ -528,6 +532,9 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         const xMin = ' . json_encode($xMin) . ';
         const xMax = ' . json_encode($xMax) . ';
         const markers = ' . json_encode($chartMarkers, JSON_UNESCAPED_SLASHES) . ';
+        const lastBuyMs = ' . json_encode($lastPurchaseMs) . ';
+        const nextBuy = ' . json_encode($nextBuyMs) . ';
+        const nextBuyColor = ' . json_encode($palette[(($primaryId ?? 0) + 1) % count($palette)]) . ';
         const datasets = [];
         const sortedMarkers = markers.slice().sort((a,b)=>a.ms-b.ms);
         const priceSegments = [];
@@ -543,13 +550,19 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
           }
         }
         if (openColors.length > 0) {
-          const offsets = [-0.4, 0.4, -0.8, 0.8];
+          const offsets = [-1.0, 1.0, -2.0, 2.0];
           openColors.forEach((c, i) => {
             const off = offsets[i % offsets.length];
             priceSegments.forEach((seg) => {
+              const data = seg.data.map((p) => {
+                if (lastBuyMs !== null && p.x >= lastBuyMs) {
+                  return {x: p.x, y: p.y + off};
+                }
+                return {x: p.x, y: p.y};
+              });
               datasets.push({
                 label: seg.label+" open",
-                data: seg.data.map(p => ({x: p.x, y: p.y + off})),
+                data,
                 borderColor: c,
                 backgroundColor: "transparent",
                 borderWidth: 2,
@@ -595,6 +608,18 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             yAxisID: "yLine",
           });
         });
+        if (nextBuy) {
+          datasets.push({
+            label: "next buy",
+            data: [{x: nextBuy, y: 0}, {x: nextBuy, y: 1}],
+            borderColor: nextBuyColor,
+            borderWidth: 1,
+            pointRadius: 0,
+            fill: false,
+            tension: 0,
+            yAxisID: "yLine",
+          });
+        }
         sells.forEach((s, idx) => {
           const offsets = [0, -8, 8, -16, 16, -24, 24, -32, 32];
           const off = offsets[idx % offsets.length];
