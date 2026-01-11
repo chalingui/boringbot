@@ -481,7 +481,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $chartBuyLines = [];
     $chartSellLines = [];
     $chartMarkers = [];
-    $chartOpenColors = [];
+    $chartOpenLines = [];
+    $lastPurchaseMs = null;
     $lastPurchaseMs = null;
     $chartPriceSegments = [];
     $sortedForChart = $purchasesSorted;
@@ -502,6 +503,9 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         if ($lastPurchaseMs === null || $ms > $lastPurchaseMs) {
             $lastPurchaseMs = $ms;
         }
+        if ($lastPurchaseMs === null || $ms > $lastPurchaseMs) {
+            $lastPurchaseMs = $ms;
+        }
     }
     foreach ($purchasesSorted as $pRow) {
         $id = (int)$pRow['id'];
@@ -514,21 +518,21 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         }
         if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
             $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color];
-            $chartOpenColors[$color] = true;
+            $chartOpenLines[] = ['id' => $id, 'color' => $color];
         }
     }
     $chartId = 'chartjs-overlay';
     $xMin = $x0;
     $xMax = $x1;
     echo '<div style="margin-bottom:8px">';
-    echo '<canvas id="' . h($chartId) . '" height="170"></canvas>';
+    echo '<canvas id="' . h($chartId) . '" height="120"></canvas>';
     echo '<script>
       (function(){
         const ctx = document.getElementById("' . h($chartId) . '").getContext("2d");
         const priceData = ' . json_encode($chartSeries, JSON_UNESCAPED_SLASHES) . ';
         const buys = ' . json_encode($chartBuyLines, JSON_UNESCAPED_SLASHES) . ';
         const sells = ' . json_encode($chartSellLines, JSON_UNESCAPED_SLASHES) . ';
-        const openColors = ' . json_encode(array_values(array_keys($chartOpenColors)), JSON_UNESCAPED_SLASHES) . ';
+        const openLines = ' . json_encode($chartOpenLines, JSON_UNESCAPED_SLASHES) . ';
         const xMin = ' . json_encode($xMin) . ';
         const xMax = ' . json_encode($xMax) . ';
         const markers = ' . json_encode($chartMarkers, JSON_UNESCAPED_SLASHES) . ';
@@ -549,9 +553,9 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             priceSegments.push({label: "Price #"+sortedMarkers[i].id, data: seg, color: sortedMarkers[i].color});
           }
         }
-        if (openColors.length > 0) {
-          const offsets = [-1.0, 1.0, -2.0, 2.0];
-          openColors.forEach((c, i) => {
+        if (openLines.length > 0) {
+          const offsets = [-1.5, 1.5, -3.0, 3.0];
+          openLines.forEach((o, i) => {
             const off = offsets[i % offsets.length];
             priceSegments.forEach((seg) => {
               const data = seg.data.map((p) => {
@@ -561,13 +565,15 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
                 return {x: p.x, y: p.y};
               });
               datasets.push({
-                label: seg.label+" open",
+                label: "#"+o.id+" price",
                 data,
-                borderColor: c,
+                borderColor: o.color,
                 backgroundColor: "transparent",
-                borderWidth: 2,
+                borderWidth: 1.6,
                 pointRadius: 0,
                 tension: 0,
+                _labelText: "#"+o.id,
+                _labelColor: o.color,
               });
             });
           });
@@ -590,10 +596,12 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
               data: [{x: xMin, y: b.price}, {x: xMax, y: b.price}],
               borderColor: b.color,
               borderWidth: 1.2,
-              borderDash: [6,6],
+              borderDash: [4,4],
               pointRadius: 0,
               fill: false,
               tension: 0,
+              _labelText: "#"+b.id,
+              _labelColor: b.color,
             });
         });
         markers.forEach((m) => {
@@ -602,6 +610,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             data: [{x: m.ms, y: 0}, {x: m.ms, y: 1}],
             borderColor: m.color,
             borderWidth: 1,
+            borderDash: [4,4],
             pointRadius: 0,
             fill: false,
             tension: 0,
@@ -614,6 +623,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             data: [{x: nextBuy, y: 0}, {x: nextBuy, y: 1}],
             borderColor: nextBuyColor,
             borderWidth: 1,
+            borderDash: [4,4],
             pointRadius: 0,
             fill: false,
             tension: 0,
@@ -628,18 +638,41 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             label: "#"+s.id+" sell",
             data: [{x: xMin, y: s.price}, {x: xMax, y: s.price}],
             borderColor: s.color,
-            borderWidth: 2,
+            borderWidth: 1.2,
             pointRadius: 0,
             fill: false,
             tension: 0,
+            _labelText: "#"+s.id,
+            _labelColor: s.color,
           });
         });
+        const labelPlugin = {
+          id: "lineLabels",
+          afterDatasetsDraw(chart) {
+            const {ctx} = chart;
+            chart.data.datasets.forEach((ds, i) => {
+              if (!ds._labelText) return;
+              const meta = chart.getDatasetMeta(i);
+              if (!meta || meta.data.length === 0) return;
+              const pt = meta.data[meta.data.length - 1];
+              if (!pt) return;
+              ctx.save();
+              ctx.fillStyle = ds._labelColor || "#9aa7d6";
+              ctx.font = "11px system-ui,-apple-system,Segoe UI,Roboto";
+              ctx.textAlign = "left";
+              ctx.textBaseline = "middle";
+              ctx.fillText(ds._labelText, pt.x + 6, pt.y);
+              ctx.restore();
+            });
+          }
+        };
+
         new Chart(ctx, {
           type: "line",
           data: { datasets },
           options: {
             animation: false,
-            plugins: { legend: { display: false } },
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
             scales: {
               x: {
                 type: "linear",
@@ -661,7 +694,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             },
             interaction: { mode: "nearest", intersect: false },
             elements: { line: { cubicInterpolationMode: "monotone" } }
-          }
+          },
+          plugins: [labelPlugin]
         });
       })();
     </script>';
