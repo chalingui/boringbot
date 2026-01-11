@@ -685,7 +685,17 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
               ctx.font = "11px system-ui,-apple-system,Segoe UI,Roboto";
               ctx.textAlign = "left";
               ctx.textBaseline = "middle";
-              ctx.fillText(ds._labelText, pt.x + 6, pt.y);
+              const text = String(ds._labelText);
+              const pad = 3;
+              const metrics = ctx.measureText(text);
+              const textW = metrics.width;
+              const textH = 12;
+              const x = pt.x + 6;
+              const y = pt.y;
+              ctx.fillStyle = "rgba(11,16,32,0.8)";
+              ctx.fillRect(x - pad, y - textH / 2 - pad, textW + pad * 2, textH + pad * 2);
+              ctx.fillStyle = ds._labelColor || "#9aa7d6";
+              ctx.fillText(text, x, y);
               ctx.restore();
             });
           }
