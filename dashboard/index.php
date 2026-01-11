@@ -543,7 +543,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $xMax = $nextBuyMs;
     }
     echo '<div style="margin-bottom:8px">';
-    echo '<canvas id="' . h($chartId) . '" height="100"></canvas>';
+    echo '<canvas id="' . h($chartId) . '" height="200"></canvas>';
     echo '<script>
       (function(){
         const ctx = document.getElementById("' . h($chartId) . '").getContext("2d");
