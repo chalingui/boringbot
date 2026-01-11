@@ -700,6 +700,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             scales: {
               x: {
                 type: "linear",
+                min: xMin,
+                max: xMax,
                 ticks: {
                   callback: (val) => {
                     const d = new Date(val);
@@ -723,6 +725,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         });
       })();
     </script>';
+    echo '</div>';
     echo '</div>';
 
 }
