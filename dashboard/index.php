@@ -155,7 +155,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
     echo '<div class="card">';
     echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
     echo '<div class="table-wrap"><table><thead><tr>';
-    echo '<th>ID</th><th>Status</th><th>Created</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Sell Avg Px</th><th>Last Px</th><th>Δ Px</th><th>Progress</th><th>Profit</th>';
+    echo '<th>ID</th><th>Status</th><th>Created</th><th>Duration</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Sell Avg Px</th><th>Last Px</th><th>Δ Px</th><th>Progress</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
 
     foreach ($rows as $p) {
@@ -172,10 +172,27 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         $sellUsdt = $p['sell_usdt'] !== null ? (float)$p['sell_usdt'] : null;
         $sellAvgPx = ($sellQty !== null && $sellUsdt !== null && $sellQty > 0) ? ($sellUsdt / $sellQty) : null;
 
+        $buyTs = $p['buy_filled_at'] ?? $p['created_at'] ?? null;
+        $sellTs = $status === 'SOLD' ? ($p['sell_filled_at'] ?? null) : null;
+        $durationLabel = '—';
+        $buySec = parseDbUtcSeconds(is_string($buyTs) ? $buyTs : null);
+        if ($buySec !== null) {
+            if ($status === 'SOLD') {
+                $sellSec = parseDbUtcSeconds(is_string($sellTs) ? $sellTs : null);
+                if ($sellSec !== null) {
+                    $durationLabel = fmtDurationSeconds(max(0, $sellSec - $buySec));
+                }
+            } else {
+                $nowSec = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->getTimestamp();
+                $durationLabel = fmtDurationSeconds(max(0, $nowSec - $buySec));
+            }
+        }
+
         echo '<tr id="p' . h((string)$id) . '" class="purchase-row ' . h($colorClass) . '">';
         echo '<td><a class="purchase-id" href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '<br><span class="muted">' . h(agoDbDt((string)$p['created_at'])) . '</span></td>';
+        echo '<td>' . h($durationLabel) . '</td>';
         echo '<td>' . h(number_format((float)$p['buy_usdt'], 2, '.', '')) . '</td>';
         echo '<td>' . h(v($p['buy_price'] ?? null)) . '</td>';
         echo '<td>' . h(v($p['buy_qty'] ?? null)) . '</td>';
@@ -411,6 +428,9 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
 
     $purchasesSorted = $purchases;
     usort($purchasesSorted, static fn(array $a, array $b) => ((int)$b['id']) <=> ((int)$a['id']));
+    if (!$hasOpenPurchases) {
+        $purchasesSorted = [];
+    }
 
     foreach ($purchasesSorted as $p) {
         if ($p['buy_price'] !== null) {
@@ -421,6 +441,10 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             $minY = min($minY, (float)$p['sell_price']);
             $maxY = max($maxY, (float)$p['sell_price']);
         }
+    }
+    if (!$hasOpenPurchases && $lastSold !== null && $lastSold['sell_price'] !== null) {
+        $minY = min($minY, (float)$lastSold['sell_price']);
+        $maxY = max($maxY, (float)$lastSold['sell_price']);
     }
     $pad = max(1.0, ($maxY - $minY) * 0.06);
     $minY -= $pad;
@@ -498,52 +522,54 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $lastPurchaseMs = null;
     $openStartMs = null;
     $maxPurchaseId = null;
-    $sortedForChart = $purchasesSorted;
-    usort($sortedForChart, static fn(array $a, array $b) => ((int)$a['id']) <=> ((int)$b['id']));
-    foreach ($sortedForChart as $pRow) {
-        $id = (int)$pRow['id'];
-        $tStr = (string)($pRow['buy_filled_at'] ?? $pRow['created_at'] ?? '');
-        if ($tStr === '') {
-            continue;
-        }
-        try {
-            $dt = new DateTimeImmutable($tStr . ' UTC');
-        } catch (Throwable) {
-            continue;
-        }
-        $ms = (float)($dt->getTimestamp() * 1000);
-        $chartMarkers[] = ['id' => $id, 'ms' => $ms, 'color' => $palette[$id % count($palette)]];
-        if ($openStartMs === null || $ms < $openStartMs) {
-            $openStartMs = $ms;
-        }
-        if ($lastPurchaseMs === null || $ms > $lastPurchaseMs) {
-            $lastPurchaseMs = $ms;
-        }
-        if ($maxPurchaseId === null || $id > $maxPurchaseId) {
-            $maxPurchaseId = $id;
-        }
-    }
-    foreach ($purchasesSorted as $pRow) {
-        $id = (int)$pRow['id'];
-        $color = $palette[$id % count($palette)];
-        $buyPx = $pRow['buy_price'] !== null ? (float)$pRow['buy_price'] : null;
-        $sellPx = $pRow['sell_price'] !== null ? (float)$pRow['sell_price'] : null;
-        $status = (string)($pRow['status'] ?? '');
-        $tStr = (string)($pRow['buy_filled_at'] ?? $pRow['created_at'] ?? '');
-        $buyMs = null;
-        if ($tStr !== '') {
+    if ($hasOpenPurchases) {
+        $sortedForChart = $purchasesSorted;
+        usort($sortedForChart, static fn(array $a, array $b) => ((int)$a['id']) <=> ((int)$b['id']));
+        foreach ($sortedForChart as $pRow) {
+            $id = (int)$pRow['id'];
+            $tStr = (string)($pRow['buy_filled_at'] ?? $pRow['created_at'] ?? '');
+            if ($tStr === '') {
+                continue;
+            }
             try {
-                $buyMs = (float)((new DateTimeImmutable($tStr . ' UTC'))->getTimestamp() * 1000);
+                $dt = new DateTimeImmutable($tStr . ' UTC');
             } catch (Throwable) {
-                $buyMs = null;
+                continue;
+            }
+            $ms = (float)($dt->getTimestamp() * 1000);
+            $chartMarkers[] = ['id' => $id, 'ms' => $ms, 'color' => $palette[$id % count($palette)]];
+            if ($openStartMs === null || $ms < $openStartMs) {
+                $openStartMs = $ms;
+            }
+            if ($lastPurchaseMs === null || $ms > $lastPurchaseMs) {
+                $lastPurchaseMs = $ms;
+            }
+            if ($maxPurchaseId === null || $id > $maxPurchaseId) {
+                $maxPurchaseId = $id;
             }
         }
-        if ($buyPx !== null) {
-            $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color, 'ms' => $buyMs];
-        }
-        if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
-            $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color, 'ms' => $buyMs];
-            $chartOpenLines[] = ['id' => $id, 'color' => $color];
+        foreach ($purchasesSorted as $pRow) {
+            $id = (int)$pRow['id'];
+            $color = $palette[$id % count($palette)];
+            $buyPx = $pRow['buy_price'] !== null ? (float)$pRow['buy_price'] : null;
+            $sellPx = $pRow['sell_price'] !== null ? (float)$pRow['sell_price'] : null;
+            $status = (string)($pRow['status'] ?? '');
+            $tStr = (string)($pRow['buy_filled_at'] ?? $pRow['created_at'] ?? '');
+            $buyMs = null;
+            if ($tStr !== '') {
+                try {
+                    $buyMs = (float)((new DateTimeImmutable($tStr . ' UTC'))->getTimestamp() * 1000);
+                } catch (Throwable) {
+                    $buyMs = null;
+                }
+            }
+            if ($buyPx !== null) {
+                $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color, 'ms' => $buyMs];
+            }
+            if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
+                $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color, 'ms' => $buyMs];
+                $chartOpenLines[] = ['id' => $id, 'color' => $color];
+            }
         }
     }
     if (!$hasOpenPurchases && $lastSold !== null) {
@@ -768,6 +794,41 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     echo '</div>';
     echo '</div>';
 
+}
+
+function parseDbUtcSeconds(?string $ts): ?int
+{
+    if ($ts === null || $ts === '') {
+        return null;
+    }
+    try {
+        $dt = new DateTimeImmutable($ts . ' UTC');
+    } catch (Throwable) {
+        return null;
+    }
+    return $dt->getTimestamp();
+}
+
+function fmtDurationSeconds(int $seconds): string
+{
+    if ($seconds <= 0) {
+        return '0s';
+    }
+    $days = intdiv($seconds, 86400);
+    $seconds -= $days * 86400;
+    $hours = intdiv($seconds, 3600);
+    $seconds -= $hours * 3600;
+    $mins = intdiv($seconds, 60);
+    if ($days > 0) {
+        return $days . 'd ' . $hours . 'h';
+    }
+    if ($hours > 0) {
+        return $hours . 'h ' . $mins . 'm';
+    }
+    if ($mins > 0) {
+        return $mins . 'm';
+    }
+    return $seconds . 's';
 }
 
 if ($view === 'purchases') {
