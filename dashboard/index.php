@@ -164,7 +164,10 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
         $colorClass = $status === 'SOLD' ? '' : ('pcolor-' . ($id % 6));
 
         $targetPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
-        $deltaPx = ($lastPrice !== null && $targetPx !== null) ? ($targetPx - $lastPrice) : null; // USDT per ETH
+        $deltaPx = null;
+        if ($status !== 'SOLD' && $lastPrice !== null && $targetPx !== null) {
+            $deltaPx = $targetPx - $lastPrice; // USDT per ETH
+        }
         $sellQty = $p['sell_qty'] !== null ? (float)$p['sell_qty'] : null;
         $sellUsdt = $p['sell_usdt'] !== null ? (float)$p['sell_usdt'] : null;
         $sellAvgPx = ($sellQty !== null && $sellUsdt !== null && $sellQty > 0) ? ($sellUsdt / $sellQty) : null;
@@ -316,8 +319,18 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     }
 
     $purchases = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL ORDER BY id DESC');
-    if ($purchases === []) {
+    $hasOpenPurchases = $purchases !== [];
+    if (!$hasOpenPurchases) {
         $purchases = $db->fetchAll('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 50');
+    }
+    $lastSold = null;
+    if (!$hasOpenPurchases) {
+        $lastSold = $db->fetchOne(
+            'SELECT * FROM purchases WHERE status = "SOLD" AND sell_price IS NOT NULL ORDER BY COALESCE(sell_filled_at, created_at) DESC, id DESC LIMIT 1'
+        );
+        if (!is_array($lastSold)) {
+            $lastSold = null;
+        }
     }
     $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
     if (!is_array($primaryPurchase)) {
@@ -531,6 +544,23 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
             $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color, 'ms' => $buyMs];
             $chartOpenLines[] = ['id' => $id, 'color' => $color];
+        }
+    }
+    if (!$hasOpenPurchases && $lastSold !== null) {
+        $soldId = isset($lastSold['id']) ? (int)$lastSold['id'] : 0;
+        $soldColor = $palette[$soldId % count($palette)];
+        $soldPx = $lastSold['sell_price'] !== null ? (float)$lastSold['sell_price'] : null;
+        $soldMs = null;
+        $soldTs = (string)($lastSold['sell_filled_at'] ?? $lastSold['created_at'] ?? '');
+        if ($soldTs !== '') {
+            try {
+                $soldMs = (float)((new DateTimeImmutable($soldTs . ' UTC'))->getTimestamp() * 1000);
+            } catch (Throwable) {
+                $soldMs = null;
+            }
+        }
+        if ($soldPx !== null) {
+            $chartSellLines[] = ['id' => $soldId, 'price' => $soldPx, 'color' => $soldColor, 'ms' => $soldMs];
         }
     }
     $chartId = 'chartjs-overlay';
