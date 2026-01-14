@@ -576,6 +576,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $soldId = isset($lastSold['id']) ? (int)$lastSold['id'] : 0;
         $soldColor = $palette[$soldId % count($palette)];
         $soldPx = $lastSold['sell_price'] !== null ? (float)$lastSold['sell_price'] : null;
+        $soldPxLabel = $soldPx === null ? null : number_format($soldPx, 2, '.', '');
         $soldMs = null;
         $soldTs = (string)($lastSold['sell_filled_at'] ?? $lastSold['created_at'] ?? '');
         if ($soldTs !== '') {
@@ -586,7 +587,14 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             }
         }
         if ($soldPx !== null) {
-            $chartSellLines[] = ['id' => $soldId, 'price' => $soldPx, 'color' => $soldColor, 'ms' => $soldMs];
+            $chartSellLines[] = [
+                'id' => $soldId,
+                'price' => $soldPx,
+                'color' => $soldColor,
+                'ms' => $soldMs,
+                'labelText' => 'Venta #' . $soldId . ' @ ' . $soldPxLabel,
+                'labelMs' => $soldMs,
+            ];
         }
     }
     $chartId = 'chartjs-overlay';
@@ -717,6 +725,10 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             pointRadius: 0,
             fill: false,
             tension: 0,
+            _labelText: s.labelText || null,
+            _labelColor: s.color,
+            _labelX: (s.labelMs || s.ms || xMax),
+            _labelY: s.price,
           });
         });
         const labelPlugin = {
