@@ -469,6 +469,11 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             try {
                 $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
                 $dueAt = $last->add(new DateInterval('P' . $days . 'D'));
+                $offsetHours = (int)($cfg['strategy']['dca_offset_hours'] ?? 0);
+                if ($offsetHours !== 0) {
+                    $offset = new DateInterval('PT' . abs($offsetHours) . 'H');
+                    $dueAt = $offsetHours > 0 ? $dueAt->add($offset) : $dueAt->sub($offset);
+                }
                 $nextBuyMs = (float)($dueAt->getTimestamp() * 1000);
                 $nextBuyLocal = $dueAt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i');
             } catch (Throwable) {
@@ -918,6 +923,34 @@ if (is_string($lastRecon) && $lastRecon !== '') {
     }
 }
 
+$nextBuyLocal = null;
+$nextBuyIn = null;
+$latest = $db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
+if (is_array($latest) && isset($latest['created_at'])) {
+    $days = (int)($cfg['strategy']['dca_interval_days'] ?? 7);
+    if ($days > 0) {
+        try {
+            $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
+            $dueAt = $last->add(new DateInterval('P' . $days . 'D'));
+            $offsetHours = (int)($cfg['strategy']['dca_offset_hours'] ?? 0);
+            if ($offsetHours !== 0) {
+                $offset = new DateInterval('PT' . abs($offsetHours) . 'H');
+                $dueAt = $offsetHours > 0 ? $dueAt->add($offset) : $dueAt->sub($offset);
+            }
+            $nextBuyLocal = $dueAt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i');
+            $nowUtc = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+            $secondsUntil = $dueAt->getTimestamp() - $nowUtc->getTimestamp();
+            if ($secondsUntil < 0) {
+                $secondsUntil = 0;
+            }
+            $nextBuyIn = 'en ' . fmtDurationSeconds((int)$secondsUntil);
+        } catch (Throwable) {
+            $nextBuyLocal = null;
+            $nextBuyIn = null;
+        }
+    }
+}
+
 echo '<div class="grid">';
 echo '<div class="card col6"><div class="muted">Balances (ledger)</div><div class="kpi">';
 foreach ($balances as $b) {
@@ -936,6 +969,7 @@ echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:1
 echo '<div class="item"><div class="muted">Trade symbol</div><div style="font-size:18px">' . h((string)($cfg['symbols']['trade'] ?? '')) . '</div></div>';
 echo '<div class="item"><div class="muted">DCA</div><div style="font-size:18px">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
 echo '<div class="item"><div class="muted">Sell markup</div><div style="font-size:18px">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
+echo '<div class="item"><div class="muted">Próxima compra</div><div style="font-size:18px">' . h($nextBuyLocal ?? '—') . '</div><div class="muted" style="margin-top:2px">' . h($nextBuyIn ?? 'n/a') . '</div></div>';
 echo '<div class="item"><div class="muted">Última actualización</div><div style="font-size:18px">' . h(ago($lastAny)) . '</div><div class="muted" style="margin-top:2px">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
 echo '</div>';
 echo '</div>';

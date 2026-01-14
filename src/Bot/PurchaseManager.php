@@ -26,6 +26,7 @@ final class PurchaseManager
         private readonly string $symbolTrade,
         private readonly float $dcaAmountUsdt,
         private readonly int $dcaIntervalDays,
+        private readonly int $dcaOffsetHours,
         private readonly float $sellMarkupPct,
         private readonly float $sellQtyBuffer,
         private readonly int $noFundsLeadHours,
@@ -498,6 +499,10 @@ final class PurchaseManager
         if ($latest !== null) {
             $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
             $dueAt = $last->add(new DateInterval('P' . $this->dcaIntervalDays . 'D'));
+            if ($this->dcaOffsetHours !== 0) {
+                $offset = new DateInterval('PT' . abs($this->dcaOffsetHours) . 'H');
+                $dueAt = $this->dcaOffsetHours > 0 ? $dueAt->add($offset) : $dueAt->sub($offset);
+            }
             if ($nowUtc < $dueAt) {
                 if (
                     !$this->dryRun

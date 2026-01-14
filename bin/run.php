@@ -91,6 +91,7 @@ try {
         (string)$cfg['symbols']['trade'],
         (float)$cfg['strategy']['dca_amount_usdt'],
         (int)$cfg['strategy']['dca_interval_days'],
+        (int)($cfg['strategy']['dca_offset_hours'] ?? 0),
         (float)$cfg['strategy']['sell_markup_pct'],
         (float)($cfg['strategy']['sell_qty_buffer'] ?? 0.0),
         (int)($cfg['notify']['no_funds_lead_hours'] ?? 48),
