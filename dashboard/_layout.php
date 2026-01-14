@@ -50,9 +50,12 @@ function renderHeader(string $title): void
       .nav a{padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.03)}
       .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
       .card{grid-column:span 12;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
-      @media (min-width:900px){.col6{grid-column:span 6}.col4{grid-column:span 4}}
+      @media (min-width:900px){.col9{grid-column:span 9}.col6{grid-column:span 6}.col4{grid-column:span 4}.col3{grid-column:span 3}}
       .kpi{display:flex;gap:16px;flex-wrap:wrap}
       .kpi .item{min-width:160px}
+      .kpi.stack{flex-direction:column;gap:10px}
+      .kpi.stack .item{min-width:0}
+      .item.profit{border:1px solid rgba(65,209,139,.35);background:rgba(65,209,139,.08);padding:8px;border-radius:10px}
       .muted{color:var(--muted)}
       table{width:100%;border-collapse:collapse}
       th,td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top}

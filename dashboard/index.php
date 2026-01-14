@@ -952,17 +952,17 @@ if (is_array($latest) && isset($latest['created_at'])) {
 }
 
 echo '<div class="grid">';
-echo '<div class="card col6"><div class="muted">Balances (ledger)</div><div class="kpi">';
+echo '<div class="card col3"><div class="muted">Balances (ledger)</div><div class="kpi stack">';
 foreach ($balances as $b) {
     if ((string)$b['asset'] === 'USDC') {
         continue;
     }
     echo '<div class="item"><div class="muted">' . h((string)$b['asset']) . '</div><div style="font-size:18px">' . h(number_format((float)$b['amount'], 8, '.', '')) . '</div></div>';
 }
-echo '<div class="item"><div class="muted">Profit</div><div style="font-size:18px">' . h(number_format((float)($profit['p'] ?? 0.0), 8, '.', '')) . '</div></div>';
+echo '<div class="item profit"><div class="muted">Profit</div><div style="font-size:18px">' . h(number_format((float)($profit['p'] ?? 0.0), 8, '.', '')) . '</div></div>';
 echo '</div></div>';
 
-echo '<div class="card col6"><div class="muted">Resumen</div>';
+echo '<div class="card col9"><div class="muted">Resumen</div>';
 echo '<div class="kpi">';
 echo '<div class="item"><div class="muted">Activas</div><div style="font-size:18px">' . h((string)($open['c'] ?? '0')) . '</div></div>';
 echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:18px">' . h((string)($sold['c'] ?? '0')) . '</div></div>';
