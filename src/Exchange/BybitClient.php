@@ -327,30 +327,24 @@ final class BybitClient
         if (is_string($side) && $side !== '') {
             $params['side'] = $side;
         }
-        try {
-            $data = $this->request('GET', '/v5/order/open-order', $params, true);
-            $list = $data['result']['list'] ?? [];
-            return is_array($list) ? $list : [];
-        } catch (Throwable $e) {
-            // Some accounts/regions return 404 for open-order; fall back to realtime + filter.
-            $params['openOnly'] = 1;
-            $data = $this->request('GET', '/v5/order/realtime', $params, true);
-            $list = $data['result']['list'] ?? [];
-            if (!is_array($list)) {
-                return [];
-            }
-            $open = [];
-            foreach ($list as $row) {
-                if (!is_array($row)) {
-                    continue;
-                }
-                $status = (string)($row['orderStatus'] ?? '');
-                if (in_array($status, ['New', 'PartiallyFilled', 'Created'], true)) {
-                    $open[] = $row;
-                }
-            }
-            return $open;
+        // Some regions return 404 for open-order; realtime works reliably with auth.
+        $params['openOnly'] = 1;
+        $data = $this->request('GET', '/v5/order/realtime', $params, true);
+        $list = $data['result']['list'] ?? [];
+        if (!is_array($list)) {
+            return [];
         }
+        $open = [];
+        foreach ($list as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $status = (string)($row['orderStatus'] ?? '');
+            if (in_array($status, ['New', 'PartiallyFilled', 'Created'], true)) {
+                $open[] = $row;
+            }
+        }
+        return $open;
     }
 
     private function request(string $method, string $path, array $params, bool $auth): array
