@@ -212,6 +212,7 @@ final class PurchaseManager
                 $this->logger->warn('HOLDING purchase missing buy_qty/buy_price', ['purchase_id' => $p['id']]);
                 continue;
             }
+            $targetPrice = $price * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
 
             // If fees were taken in base asset, available balance may be slightly lower than recorded qty.
             $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
@@ -252,6 +253,21 @@ final class PurchaseManager
                         'asset' => $baseAsset,
                         'note' => 'Funds may be in funding/unavailable; transfer to spot/unified to sell.',
                     ]);
+                }
+                if (is_float($avail) && $avail <= 0 && is_float($wallet) && $wallet > 0) {
+                    if ($this->maybeLinkExistingSellOrder($p, $targetPrice, $qty)) {
+                        continue;
+                    }
+                    $transferred = $this->maybeAutoTransferBaseAsset($p, $baseAsset, $qty);
+                    if ($transferred) {
+                        continue;
+                    }
+                    $this->markNeedsFunds($p, 'available_zero_wallet_positive', [
+                        'available' => $avail,
+                        'wallet_balance' => $wallet,
+                        'transfer_balance' => $transfer,
+                    ]);
+                    continue;
                 }
                 if (is_float($avail) && $avail > 0 && $avail + 1e-12 < $qty) {
                     $this->logger->warn('Adjusting HOLDING qty to available balance (likely fees)', [
@@ -349,12 +365,6 @@ final class PurchaseManager
                 }
             }
 
-            $targetPrice = $price * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
-            if (is_float($wallet) && $wallet > 0 && (is_float($avail) && $avail <= 0)) {
-                if ($this->maybeLinkExistingSellOrder($p, $targetPrice, $qty)) {
-                    continue;
-                }
-            }
             if ($qtyStepStr !== '' && (float)$qtyStepStr > 0) {
                 $sellQty = $this->floorToStep($sellQty, (float)$qtyStepStr);
             }
