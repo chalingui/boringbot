@@ -95,6 +95,10 @@ try {
         (float)$cfg['strategy']['sell_markup_pct'],
         (float)($cfg['strategy']['sell_qty_buffer'] ?? 0.0),
         (int)($cfg['notify']['no_funds_lead_hours'] ?? 48),
+        (bool)($cfg['transfers']['enabled'] ?? false),
+        (string)($cfg['transfers']['from_account'] ?? ''),
+        (string)($cfg['transfers']['principal_to_account'] ?? ''),
+        (string)($cfg['transfers']['profit_to_account'] ?? ''),
         $dryRun,
     );
 

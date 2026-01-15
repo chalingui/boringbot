@@ -259,6 +259,41 @@ final class BybitClient
         return $orderId;
     }
 
+    public function orderFilters(string $symbol): array
+    {
+        $info = $this->instrumentInfo($symbol);
+        $lot = $info['lotSizeFilter'] ?? [];
+        $pf = $info['priceFilter'] ?? [];
+
+        $qtyStep = (string)($lot['qtyStep'] ?? '');
+        if ($qtyStep === '') {
+            $qtyStep = (string)($lot['basePrecision'] ?? '');
+        }
+
+        return [
+            'qtyStep' => $qtyStep,
+            'tickSize' => (string)($pf['tickSize'] ?? ''),
+            'minOrderQty' => isset($lot['minOrderQty']) ? (float)$lot['minOrderQty'] : null,
+            'minOrderAmt' => isset($lot['minOrderAmt']) ? (float)$lot['minOrderAmt'] : null,
+        ];
+    }
+
+    public function interTransfer(string $coin, float $amount, string $fromAccountType, string $toAccountType): string
+    {
+        if ($amount <= 0) {
+            throw new RuntimeException('Transfer amount must be positive.');
+        }
+        $transferId = 'bb' . bin2hex(random_bytes(8));
+        $this->request('POST', '/v5/asset/transfer/inter-transfer', [
+            'transferId' => $transferId,
+            'coin' => $coin,
+            'amount' => $this->formatNumber($amount),
+            'fromAccountType' => $fromAccountType,
+            'toAccountType' => $toAccountType,
+        ], true);
+        return $transferId;
+    }
+
     /**
      * Returns realtime order data:
      * - orderStatus, avgPrice, cumExecQty, cumExecValue

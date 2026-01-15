@@ -335,7 +335,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $limit = 1000;
     }
 
-    $purchases = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL ORDER BY id DESC');
+    $purchases = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL ORDER BY id DESC');
     $hasOpenPurchases = $purchases !== [];
     if (!$hasOpenPurchases) {
         $purchases = $db->fetchAll('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 50');
@@ -349,7 +349,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             $lastSold = null;
         }
     }
-    $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
+    $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
     if (!is_array($primaryPurchase)) {
         $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
     }
@@ -360,7 +360,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $openStart = $db->fetchOne(
         'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
          FROM purchases
-         WHERE status IN ("BUYING","HOLDING","OPEN") AND buy_price IS NOT NULL'
+         WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL'
     );
     if (is_array($openStart) && ($openStart['first_at'] ?? '') !== '') {
         try {
@@ -571,7 +571,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
             if ($buyPx !== null) {
                 $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color, 'ms' => $buyMs];
             }
-            if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING'], true)) {
+            if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING', 'NEEDS_FUNDS'], true)) {
                 $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color, 'ms' => $buyMs];
                 $chartOpenLines[] = ['id' => $id, 'color' => $color];
             }
@@ -893,7 +893,7 @@ if ($view === 'logs') {
 
 // Home (overview)
 $balances = $db->fetchAll('SELECT asset, amount FROM balances ORDER BY asset ASC');
-$open = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN")');
+$open = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS")');
 $sold = $db->fetchOne('SELECT COUNT(1) as c FROM purchases WHERE status = "SOLD"');
 $profit = $db->fetchOne('SELECT COALESCE(SUM(profit_usdt), 0) as p FROM purchases WHERE profit_usdt IS NOT NULL');
 $meta = $db->fetchAll('SELECT k, v FROM meta WHERE k IN ("last_run_finished_at","last_reconcile_finished_at")');

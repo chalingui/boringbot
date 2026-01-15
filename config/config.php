@@ -41,4 +41,11 @@ return [
             'encryption' => getenv('SMTP_ENCRYPTION') ?: 'starttls',
         ],
     ],
+
+    'transfers' => [
+        'enabled' => (getenv('TRANSFER_ENABLED') ?: '0') === '1',
+        'from_account' => getenv('TRANSFER_FROM_ACCOUNT') ?: (getenv('BYBIT_ACCOUNT_TYPE') ?: 'SPOT'),
+        'principal_to_account' => getenv('TRANSFER_PRINCIPAL_TO_ACCOUNT') ?: '',
+        'profit_to_account' => getenv('TRANSFER_PROFIT_TO_ACCOUNT') ?: '',
+    ],
 ];

@@ -17,6 +17,7 @@ final class PurchaseManager
     private const STATUS_HOLDING = 'HOLDING';
     private const STATUS_OPEN = 'OPEN';
     private const STATUS_SOLD = 'SOLD';
+    private const STATUS_NEEDS_FUNDS = 'NEEDS_FUNDS';
 
     public function __construct(
         private readonly Database $db,
@@ -30,6 +31,10 @@ final class PurchaseManager
         private readonly float $sellMarkupPct,
         private readonly float $sellQtyBuffer,
         private readonly int $noFundsLeadHours,
+        private readonly bool $transferEnabled,
+        private readonly string $transferFromAccount,
+        private readonly string $transferPrincipalToAccount,
+        private readonly string $transferProfitToAccount,
         private readonly bool $dryRun,
     ) {
     }
@@ -192,8 +197,9 @@ final class PurchaseManager
             return;
         }
 
-        $rows = $this->db->fetchAll('SELECT * FROM purchases WHERE status = :s ORDER BY id ASC', [
-            ':s' => self::STATUS_HOLDING,
+        $rows = $this->db->fetchAll('SELECT * FROM purchases WHERE status IN (:s1, :s2) ORDER BY id ASC', [
+            ':s1' => self::STATUS_HOLDING,
+            ':s2' => self::STATUS_NEEDS_FUNDS,
         ]);
 
         foreach ($rows as $p) {
@@ -209,6 +215,10 @@ final class PurchaseManager
             $avail = null;
             $wallet = null;
             $transfer = null;
+            $filters = $this->bybit->orderFilters($this->symbolTrade);
+            $minQty = isset($filters['minOrderQty']) ? (float)$filters['minOrderQty'] : null;
+            $minAmt = isset($filters['minOrderAmt']) ? (float)$filters['minOrderAmt'] : null;
+            $qtyStepStr = (string)($filters['qtyStep'] ?? '');
             if ($baseAsset !== '') {
                 $balanceInfo = $this->bybit->walletBalanceInfo($baseAsset);
                 $avail = $balanceInfo['available'] ?? null;
@@ -237,6 +247,7 @@ final class PurchaseManager
                         'available' => $this->fmt8($avail),
                         'wallet_balance' => $this->fmt8($wallet),
                         'asset' => $baseAsset,
+                        'note' => 'Funds may be in funding/unavailable; transfer to spot/unified to sell.',
                     ]);
                 }
                 if (is_float($avail) && $avail > 0 && $avail + 1e-12 < $qty) {
@@ -282,6 +293,20 @@ final class PurchaseManager
             } elseif (is_float($wallet) && $wallet > 0) {
                 $effectiveAvail = $wallet;
             }
+            if (is_float($effectiveAvail) && $effectiveAvail > 0 && $this->isBelowMinTradeQty($effectiveAvail, $qtyStepStr, $minQty)) {
+                $this->logger->warn('Effective available balance is dust; ignoring transfer/available balance', [
+                    'purchase_id' => $p['id'],
+                    'effective_available' => $this->fmt8($effectiveAvail),
+                    'qty_step' => $qtyStepStr,
+                    'min_order_qty' => $minQty !== null ? $this->fmt8($minQty) : null,
+                ]);
+                $effectiveAvail = null;
+                if (is_float($avail) && $avail > 0) {
+                    $effectiveAvail = $avail;
+                } elseif (is_float($wallet) && $wallet > 0) {
+                    $effectiveAvail = $wallet;
+                }
+            }
             if (is_float($effectiveAvail) && $effectiveAvail >= 0) {
                 $capAvail = $effectiveAvail;
                 if ($this->sellQtyBuffer > 0) {
@@ -296,6 +321,12 @@ final class PurchaseManager
                             'wallet_balance' => is_float($wallet) ? $this->fmt8($wallet) : null,
                             'transfer_balance' => is_float($transfer) ? $this->fmt8($transfer) : null,
                             'buffer' => $this->fmt8($this->sellQtyBuffer),
+                        ]);
+                        $this->markNeedsFunds($p, 'no_available_balance', [
+                            'available' => $avail,
+                            'wallet_balance' => $wallet,
+                            'transfer_balance' => $transfer,
+                            'buffer' => $this->sellQtyBuffer,
                         ]);
                         continue;
                     }
@@ -312,6 +343,47 @@ final class PurchaseManager
             }
 
             $targetPrice = $price * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
+            if ($qtyStepStr !== '' && (float)$qtyStepStr > 0) {
+                $sellQty = $this->floorToStep($sellQty, (float)$qtyStepStr);
+            }
+            if ($sellQty <= 0) {
+                $this->logger->warn('HOLDING sell qty below step; skipping limit sell', [
+                    'purchase_id' => $p['id'],
+                    'sell_qty' => $this->fmt8($sellQty),
+                    'qty_step' => $qtyStepStr,
+                ]);
+                $this->markNeedsFunds($p, 'sell_qty_below_step', [
+                    'sell_qty' => $sellQty,
+                    'qty_step' => $qtyStepStr,
+                ]);
+                continue;
+            }
+            if ($minQty !== null && $sellQty + 1e-12 < $minQty) {
+                $this->logger->warn('HOLDING sell qty below minOrderQty; skipping limit sell', [
+                    'purchase_id' => $p['id'],
+                    'sell_qty' => $this->fmt8($sellQty),
+                    'min_order_qty' => $this->fmt8($minQty),
+                ]);
+                $this->markNeedsFunds($p, 'sell_qty_below_min_order_qty', [
+                    'sell_qty' => $sellQty,
+                    'min_order_qty' => $minQty,
+                ]);
+                continue;
+            }
+            if ($minAmt !== null && ($sellQty * $targetPrice) + 1e-8 < $minAmt) {
+                $this->logger->warn('HOLDING sell notional below minOrderAmt; skipping limit sell', [
+                    'purchase_id' => $p['id'],
+                    'sell_qty' => $this->fmt8($sellQty),
+                    'sell_price' => $this->fmt8($targetPrice),
+                    'min_order_amt' => $this->fmt8($minAmt),
+                ]);
+                $this->markNeedsFunds($p, 'sell_notional_below_min_order_amt', [
+                    'sell_qty' => $sellQty,
+                    'sell_price' => $targetPrice,
+                    'min_order_amt' => $minAmt,
+                ]);
+                continue;
+            }
             try {
                 $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $sellQty, $targetPrice);
             } catch (Throwable $e) {
@@ -453,6 +525,81 @@ final class PurchaseManager
                 'profit_usdt' => $profitUsdt,
             ]);
 
+            $profitTransferred = false;
+            $principalTransferred = false;
+            if ($this->transferEnabled && !$this->dryRun) {
+                if ($this->transferFromAccount === '') {
+                    $this->logger->warn('Transfer enabled but from_account is empty; skipping transfers', [
+                        'purchase_id' => $p['id'],
+                    ]);
+                } else {
+                    if (
+                        $this->transferProfitToAccount !== ''
+                        && strcasecmp($this->transferProfitToAccount, $this->transferFromAccount) !== 0
+                        && $profitUsdt > 0
+                    ) {
+                        try {
+                            $transferId = $this->bybit->interTransfer(
+                                'USDT',
+                                $profitUsdt,
+                                $this->transferFromAccount,
+                                $this->transferProfitToAccount
+                            );
+                            $profitTransferred = true;
+                            $this->insertEvent('TRANSFER_PROFIT', [
+                                'purchase_id' => (int)$p['id'],
+                                'amount' => $profitUsdt,
+                                'coin' => 'USDT',
+                                'from' => $this->transferFromAccount,
+                                'to' => $this->transferProfitToAccount,
+                                'transfer_id' => $transferId,
+                            ]);
+                        } catch (Throwable $e) {
+                            $this->logger->error('Profit transfer failed', [
+                                'purchase_id' => $p['id'],
+                                'error' => $e->getMessage(),
+                                'amount' => $profitUsdt,
+                                'coin' => 'USDT',
+                                'from' => $this->transferFromAccount,
+                                'to' => $this->transferProfitToAccount,
+                            ]);
+                        }
+                    }
+                    if (
+                        $this->transferPrincipalToAccount !== ''
+                        && strcasecmp($this->transferPrincipalToAccount, $this->transferFromAccount) !== 0
+                        && $buyUsdt > 0
+                    ) {
+                        try {
+                            $transferId = $this->bybit->interTransfer(
+                                'USDT',
+                                $buyUsdt,
+                                $this->transferFromAccount,
+                                $this->transferPrincipalToAccount
+                            );
+                            $principalTransferred = true;
+                            $this->insertEvent('TRANSFER_PRINCIPAL', [
+                                'purchase_id' => (int)$p['id'],
+                                'amount' => $buyUsdt,
+                                'coin' => 'USDT',
+                                'from' => $this->transferFromAccount,
+                                'to' => $this->transferPrincipalToAccount,
+                                'transfer_id' => $transferId,
+                            ]);
+                        } catch (Throwable $e) {
+                            $this->logger->error('Principal transfer failed', [
+                                'purchase_id' => $p['id'],
+                                'error' => $e->getMessage(),
+                                'amount' => $buyUsdt,
+                                'coin' => 'USDT',
+                                'from' => $this->transferFromAccount,
+                                'to' => $this->transferPrincipalToAccount,
+                            ]);
+                        }
+                    }
+                }
+            }
+
             try {
                 $this->db->begin();
                 $this->db->exec(
@@ -471,7 +618,16 @@ final class PurchaseManager
                 );
 
                 $this->addBalance('ETH', -$sellQty);
-                $this->addBalance('USDT', $buyUsdt + $profitUsdt);
+                $ledgerUsdt = 0.0;
+                if (!$principalTransferred) {
+                    $ledgerUsdt += $buyUsdt;
+                }
+                if (!$profitTransferred) {
+                    $ledgerUsdt += $profitUsdt;
+                }
+                if ($ledgerUsdt > 0) {
+                    $this->addBalance('USDT', $ledgerUsdt);
+                }
 
                 $this->insertEvent('SOLD', [
                     'purchase_id' => (int)$p['id'],
@@ -680,5 +836,50 @@ final class PurchaseManager
             return null;
         }
         return $this->fmt8($value);
+    }
+
+    private function floorToStep(float $value, float $step): float
+    {
+        if ($step <= 0) {
+            return $value;
+        }
+        $factor = 1 / $step;
+        return floor(($value + 1e-12) * $factor) / $factor;
+    }
+
+    private function markNeedsFunds(array $purchase, string $reason, array $context = []): void
+    {
+        if ((string)($purchase['status'] ?? '') === self::STATUS_NEEDS_FUNDS) {
+            return;
+        }
+        try {
+            $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
+                ':st' => self::STATUS_NEEDS_FUNDS,
+                ':id' => $purchase['id'],
+            ]);
+            $payload = array_merge([
+                'purchase_id' => (int)$purchase['id'],
+                'reason' => $reason,
+            ], $context);
+            $this->insertEvent('NEEDS_FUNDS', $payload);
+        } catch (Throwable $e) {
+            $this->logger->warn('Failed to mark purchase as NEEDS_FUNDS', [
+                'purchase_id' => $purchase['id'],
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function isBelowMinTradeQty(float $qty, string $qtyStepStr, ?float $minQty): bool
+    {
+        $minStep = null;
+        if ($qtyStepStr !== '' && (float)$qtyStepStr > 0) {
+            $minStep = (float)$qtyStepStr;
+        }
+        $minAllowed = $minQty ?? $minStep ?? 0.0;
+        if ($minStep !== null) {
+            $minAllowed = max($minAllowed, $minStep);
+        }
+        return $minAllowed > 0 && $qty + 1e-12 < $minAllowed;
     }
 }
