@@ -323,12 +323,11 @@ final class BybitClient
         $params = [
             'category' => 'spot',
             'symbol' => $symbol,
-            'openOnly' => 1,
         ];
         if (is_string($side) && $side !== '') {
             $params['side'] = $side;
         }
-        $data = $this->request('GET', '/v5/order/realtime', $params, true);
+        $data = $this->request('GET', '/v5/order/open-order', $params, true);
         $list = $data['result']['list'] ?? [];
         return is_array($list) ? $list : [];
     }
