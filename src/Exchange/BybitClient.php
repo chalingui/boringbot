@@ -313,6 +313,26 @@ final class BybitClient
         return $list[0];
     }
 
+    /**
+     * Returns open orders for a symbol (optionally filtered by side).
+     *
+     * @return array<int, array>
+     */
+    public function openOrders(string $symbol, ?string $side = null): array
+    {
+        $params = [
+            'category' => 'spot',
+            'symbol' => $symbol,
+            'openOnly' => 1,
+        ];
+        if (is_string($side) && $side !== '') {
+            $params['side'] = $side;
+        }
+        $data = $this->request('GET', '/v5/order/realtime', $params, true);
+        $list = $data['result']['list'] ?? [];
+        return is_array($list) ? $list : [];
+    }
+
     private function request(string $method, string $path, array $params, bool $auth): array
     {
         $method = strtoupper($method);

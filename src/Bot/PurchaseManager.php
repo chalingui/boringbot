@@ -350,6 +350,11 @@ final class PurchaseManager
             }
 
             $targetPrice = $price * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
+            if (is_float($wallet) && $wallet > 0 && (is_float($avail) && $avail <= 0)) {
+                if ($this->maybeLinkExistingSellOrder($p, $targetPrice, $qty)) {
+                    continue;
+                }
+            }
             if ($qtyStepStr !== '' && (float)$qtyStepStr > 0) {
                 $sellQty = $this->floorToStep($sellQty, (float)$qtyStepStr);
             }
@@ -949,6 +954,94 @@ final class PurchaseManager
             ]);
             return false;
         }
+    }
+
+    private function maybeLinkExistingSellOrder(array $purchase, float $targetPrice, float $expectedQty): bool
+    {
+        if ($this->dryRun) {
+            return false;
+        }
+        try {
+            $orders = $this->bybit->openOrders($this->symbolTrade, 'Sell');
+        } catch (Throwable $e) {
+            $this->logger->warn('Failed to list open sell orders', [
+                'purchase_id' => $purchase['id'],
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+        if ($orders === []) {
+            return false;
+        }
+        $best = null;
+        foreach ($orders as $o) {
+            if (!is_array($o)) {
+                continue;
+            }
+            $price = isset($o['price']) ? (float)$o['price'] : null;
+            $qty = null;
+            if (isset($o['qty'])) {
+                $qty = (float)$o['qty'];
+            } elseif (isset($o['orderQty'])) {
+                $qty = (float)$o['orderQty'];
+            } elseif (isset($o['origQty'])) {
+                $qty = (float)$o['origQty'];
+            }
+            $orderId = (string)($o['orderId'] ?? '');
+            if ($price === null || $qty === null || $orderId === '') {
+                continue;
+            }
+            $priceDiff = abs($price - $targetPrice);
+            $priceOk = $targetPrice > 0 ? ($priceDiff / $targetPrice) <= 0.01 : false;
+            $qtyDiff = abs($qty - $expectedQty);
+            $qtyOk = $expectedQty > 0 ? ($qtyDiff / $expectedQty) <= 0.01 : false;
+            if ($priceOk && $qtyOk) {
+                $best = [
+                    'order_id' => $orderId,
+                    'price' => $price,
+                    'qty' => $qty,
+                ];
+                break;
+            }
+        }
+        if ($best === null) {
+            return false;
+        }
+        try {
+            $this->db->begin();
+            $this->db->exec(
+                'UPDATE purchases SET
+                    sell_order_id = :so,
+                    sell_price = :sp,
+                    sell_qty = :sq,
+                    status = :st
+                 WHERE id = :id',
+                [
+                    ':so' => $best['order_id'],
+                    ':sp' => $best['price'],
+                    ':sq' => $best['qty'],
+                    ':st' => self::STATUS_OPEN,
+                    ':id' => $purchase['id'],
+                ]
+            );
+            $this->insertEvent('SELL_ORDER_LINKED', [
+                'purchase_id' => (int)$purchase['id'],
+                'sell_order_id' => $best['order_id'],
+                'sell_price' => $best['price'],
+                'sell_qty' => $best['qty'],
+            ]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+        $this->logger->info('Linked existing open sell order', [
+            'purchase_id' => $purchase['id'],
+            'sell_order_id' => $best['order_id'],
+            'sell_price' => $this->fmt8($best['price']),
+            'sell_qty' => $this->fmt8($best['qty']),
+        ]);
+        return true;
     }
 
     private function isBelowMinTradeQty(float $qty, string $qtyStepStr, ?float $minQty): bool
