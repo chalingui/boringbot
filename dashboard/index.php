@@ -926,7 +926,9 @@ if (is_string($lastRecon) && $lastRecon !== '') {
 $nextBuyLocal = null;
 $nextBuyIn = null;
 $latest = $db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
+$lastBuy = null;
 if (is_array($latest) && isset($latest['created_at'])) {
+    $lastBuy = (string)$latest['created_at'];
     $days = (int)($cfg['strategy']['dca_interval_days'] ?? 7);
     if ($days > 0) {
         try {
@@ -969,6 +971,7 @@ echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:1
 echo '<div class="item"><div class="muted">Trade symbol</div><div style="font-size:18px">' . h((string)($cfg['symbols']['trade'] ?? '')) . '</div></div>';
 echo '<div class="item"><div class="muted">DCA</div><div style="font-size:18px">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
 echo '<div class="item"><div class="muted">Sell markup</div><div style="font-size:18px">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
+echo '<div class="item"><div class="muted">Última compra</div><div style="font-size:18px">' . h(agoDbDt($lastBuy)) . '</div><div class="muted" style="margin-top:2px">' . h($lastBuy === null ? '—' : fmtDbDt($lastBuy)) . '</div></div>';
 echo '<div class="item"><div class="muted">Próxima compra</div><div style="font-size:18px">' . h($nextBuyLocal ?? '—') . '</div><div class="muted" style="margin-top:2px">' . h($nextBuyIn ?? 'n/a') . '</div></div>';
 echo '<div class="item"><div class="muted">Última actualización</div><div style="font-size:18px">' . h(ago($lastAny)) . '</div><div class="muted" style="margin-top:2px">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
 echo '</div>';
