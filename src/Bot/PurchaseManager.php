@@ -254,7 +254,11 @@ final class PurchaseManager
                         'note' => 'Funds may be in funding/unavailable; transfer to spot/unified to sell.',
                     ]);
                 }
-                if (is_float($avail) && $avail <= 0 && is_float($wallet) && $wallet > 0) {
+                if (
+                    is_float($avail) && $avail <= 0
+                    && is_float($wallet) && $wallet > 0
+                    && (!is_float($transfer) || $transfer <= 0)
+                ) {
                     if ($this->maybeLinkExistingSellOrder($p, $targetPrice, $qty)) {
                         continue;
                     }
