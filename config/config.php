@@ -47,5 +47,8 @@ return [
         'from_account' => getenv('TRANSFER_FROM_ACCOUNT') ?: (getenv('BYBIT_ACCOUNT_TYPE') ?: 'SPOT'),
         'principal_to_account' => getenv('TRANSFER_PRINCIPAL_TO_ACCOUNT') ?: '',
         'profit_to_account' => getenv('TRANSFER_PROFIT_TO_ACCOUNT') ?: '',
+        'base_asset_enabled' => (getenv('TRANSFER_BASE_ASSET_ENABLED') ?: '0') === '1',
+        'base_asset_from_account' => getenv('TRANSFER_BASE_ASSET_FROM_ACCOUNT') ?: 'FUND',
+        'base_asset_to_account' => getenv('TRANSFER_BASE_ASSET_TO_ACCOUNT') ?: (getenv('BYBIT_ACCOUNT_TYPE') ?: 'SPOT'),
     ],
 ];

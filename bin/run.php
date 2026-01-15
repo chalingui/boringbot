@@ -99,6 +99,9 @@ try {
         (string)($cfg['transfers']['from_account'] ?? ''),
         (string)($cfg['transfers']['principal_to_account'] ?? ''),
         (string)($cfg['transfers']['profit_to_account'] ?? ''),
+        (bool)($cfg['transfers']['base_asset_enabled'] ?? false),
+        (string)($cfg['transfers']['base_asset_from_account'] ?? ''),
+        (string)($cfg['transfers']['base_asset_to_account'] ?? ''),
         $dryRun,
     );
 

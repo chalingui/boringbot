@@ -35,6 +35,9 @@ final class PurchaseManager
         private readonly string $transferFromAccount,
         private readonly string $transferPrincipalToAccount,
         private readonly string $transferProfitToAccount,
+        private readonly bool $transferBaseAssetEnabled,
+        private readonly string $transferBaseAssetFromAccount,
+        private readonly string $transferBaseAssetToAccount,
         private readonly bool $dryRun,
     ) {
     }
@@ -315,6 +318,10 @@ final class PurchaseManager
                 if ($capAvail + 1e-12 < $sellQty) {
                     $sellQty = $capAvail;
                     if ($sellQty <= 0) {
+                        $transferred = $this->maybeAutoTransferBaseAsset($p, $baseAsset, $qty);
+                        if ($transferred) {
+                            continue;
+                        }
                         $this->logger->warn('HOLDING purchase has no available balance after buffer', [
                             'purchase_id' => $p['id'],
                             'available' => is_float($avail) ? $this->fmt8($avail) : null,
@@ -347,6 +354,10 @@ final class PurchaseManager
                 $sellQty = $this->floorToStep($sellQty, (float)$qtyStepStr);
             }
             if ($sellQty <= 0) {
+                $transferred = $this->maybeAutoTransferBaseAsset($p, $baseAsset, $qty);
+                if ($transferred) {
+                    continue;
+                }
                 $this->logger->warn('HOLDING sell qty below step; skipping limit sell', [
                     'purchase_id' => $p['id'],
                     'sell_qty' => $this->fmt8($sellQty),
@@ -359,6 +370,10 @@ final class PurchaseManager
                 continue;
             }
             if ($minQty !== null && $sellQty + 1e-12 < $minQty) {
+                $transferred = $this->maybeAutoTransferBaseAsset($p, $baseAsset, $qty);
+                if ($transferred) {
+                    continue;
+                }
                 $this->logger->warn('HOLDING sell qty below minOrderQty; skipping limit sell', [
                     'purchase_id' => $p['id'],
                     'sell_qty' => $this->fmt8($sellQty),
@@ -371,6 +386,10 @@ final class PurchaseManager
                 continue;
             }
             if ($minAmt !== null && ($sellQty * $targetPrice) + 1e-8 < $minAmt) {
+                $transferred = $this->maybeAutoTransferBaseAsset($p, $baseAsset, $qty);
+                if ($transferred) {
+                    continue;
+                }
                 $this->logger->warn('HOLDING sell notional below minOrderAmt; skipping limit sell', [
                     'purchase_id' => $p['id'],
                     'sell_qty' => $this->fmt8($sellQty),
@@ -867,6 +886,68 @@ final class PurchaseManager
                 'purchase_id' => $purchase['id'],
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    private function maybeAutoTransferBaseAsset(array $purchase, string $asset, float $neededQty): bool
+    {
+        if (!$this->transferBaseAssetEnabled || $this->dryRun) {
+            return false;
+        }
+        if ($asset === '') {
+            return false;
+        }
+        if ($this->transferBaseAssetFromAccount === '' || $this->transferBaseAssetToAccount === '') {
+            $this->logger->warn('Base asset transfer enabled but account types are missing', [
+                'purchase_id' => $purchase['id'],
+            ]);
+            return false;
+        }
+        if (strcasecmp($this->transferBaseAssetFromAccount, $this->transferBaseAssetToAccount) === 0) {
+            return false;
+        }
+        $transferable = $this->bybit->transferBalance($asset, $this->transferBaseAssetFromAccount);
+        if (!is_float($transferable) || $transferable <= 0) {
+            return false;
+        }
+        $amount = min($neededQty, $transferable);
+        if ($amount <= 0) {
+            return false;
+        }
+        try {
+            $transferId = $this->bybit->interTransfer(
+                $asset,
+                $amount,
+                $this->transferBaseAssetFromAccount,
+                $this->transferBaseAssetToAccount
+            );
+            $this->logger->info('Auto-transferred base asset for sell', [
+                'purchase_id' => $purchase['id'],
+                'asset' => $asset,
+                'amount' => $this->fmt8($amount),
+                'from' => $this->transferBaseAssetFromAccount,
+                'to' => $this->transferBaseAssetToAccount,
+                'transfer_id' => $transferId,
+            ]);
+            $this->insertEvent('TRANSFER_BASE_ASSET', [
+                'purchase_id' => (int)$purchase['id'],
+                'asset' => $asset,
+                'amount' => $amount,
+                'from' => $this->transferBaseAssetFromAccount,
+                'to' => $this->transferBaseAssetToAccount,
+                'transfer_id' => $transferId,
+            ]);
+            return true;
+        } catch (Throwable $e) {
+            $this->logger->error('Auto-transfer base asset failed', [
+                'purchase_id' => $purchase['id'],
+                'asset' => $asset,
+                'amount' => $this->fmt8($amount),
+                'from' => $this->transferBaseAssetFromAccount,
+                'to' => $this->transferBaseAssetToAccount,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
         }
     }
 
