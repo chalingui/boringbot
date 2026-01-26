@@ -508,7 +508,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $priceLine = implode(' ', $points);
 
     // Purchase overlays: keep colors consistent with table accents.
-    $palette = ['#6ea8ff', '#41d18b', '#ffcd57', '#ff6b6b', '#9fb7ff', '#f48fb1'];
+    $palette = ['#f4b6b2', '#bde5b8', '#ffe3a3', '#f6c6d7', '#d9c7f7', '#ffd3b6'];
 
     // Extra chart (Chart.js) for clearer stacked sell lines.
     static $chartJsIncluded = false;
