@@ -1027,6 +1027,51 @@ if (($lastDcaAt !== null && $lastDcaAt !== '') || (is_array($latest) && isset($l
 }
 
 $symbols = tradeSymbols($cfg);
+$bybitHome = new BybitClient(
+    (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
+    '',
+    '',
+);
+$lastPricesHome = lastPricesForSymbols($bybitHome, $symbols);
+$symbolStats = [];
+foreach ($symbols as $symbol) {
+    $symbolOpen = $db->fetchOne(
+        'SELECT COUNT(1) as c FROM purchases WHERE symbol = :sym AND status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS")',
+        [':sym' => $symbol]
+    );
+    $symbolSold = $db->fetchOne(
+        'SELECT COUNT(1) as c FROM purchases WHERE symbol = :sym AND status = "SOLD"',
+        [':sym' => $symbol]
+    );
+    $symbolLatest = $db->fetchOne(
+        'SELECT created_at FROM purchases WHERE symbol = :sym ORDER BY id DESC LIMIT 1',
+        [':sym' => $symbol]
+    );
+    $symbolLastBuy = null;
+    $symbolLastBuyLocal = null;
+    $symbolLastBuyAgo = null;
+    if (is_array($symbolLatest) && isset($symbolLatest['created_at'])) {
+        $symbolLastBuy = (string)$symbolLatest['created_at'];
+        $symbolLastBuyAgo = agoDbDt($symbolLastBuy);
+        $symbolLastBuyLocal = fmtDbDt($symbolLastBuy);
+        if ($symbolLastBuyLocal !== '') {
+            try {
+                $symbolLastBuyLocal = (new DateTimeImmutable($symbolLastBuy . ' UTC'))
+                    ->setTimezone(new DateTimeZone(date_default_timezone_get()))
+                    ->format('Y-m-d H:i');
+            } catch (Throwable) {
+                // keep fallback formatting
+            }
+        }
+    }
+    $symbolStats[$symbol] = [
+        'open' => (string)($symbolOpen['c'] ?? '0'),
+        'sold' => (string)($symbolSold['c'] ?? '0'),
+        'last_buy_local' => $symbolLastBuyLocal,
+        'last_buy_ago' => $symbolLastBuyAgo,
+        'last_price' => $lastPricesHome[$symbol] ?? null,
+    ];
+}
 echo '<div class="grid">';
 echo '<div class="card col3"><div class="muted">Balances (ledger)</div><div class="kpi stack">';
 foreach ($balances as $b) {
@@ -1052,16 +1097,26 @@ echo '</div>';
 echo '</div>';
 
 foreach ($symbols as $symbol) {
+    $baseAsset = str_ends_with($symbol, 'USDT') ? substr($symbol, 0, -4) : $symbol;
+    $badgeClass = strtolower($baseAsset) === 'btc' ? 'btc' : 'eth';
+    $stats = $symbolStats[$symbol] ?? [];
+    echo '<div class="card col6">';
+    echo '<div class="asset-badge ' . h($badgeClass) . '"><span class="icon">' . h($baseAsset) . '</span><span>' . h($symbol) . '</span></div>';
+    echo '<div class="kpi" style="margin-top:10px">';
+    echo '<div class="item"><div class="muted">Activas</div><div style="font-size:18px">' . h((string)($stats['open'] ?? '0')) . '</div></div>';
+    echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:18px">' . h((string)($stats['sold'] ?? '0')) . '</div></div>';
+    $lastPx = $stats['last_price'] ?? null;
+    echo '<div class="item"><div class="muted">Last Px</div><div style="font-size:18px">' . h($lastPx === null ? '—' : number_format((float)$lastPx, 2, '.', '')) . '</div></div>';
+    echo '<div class="item"><div class="muted">Última compra</div><div style="font-size:18px">' . h($stats['last_buy_local'] ?? '—') . '</div><div class="muted" style="margin-top:2px">' . h($stats['last_buy_ago'] ?? 'n/a') . '</div></div>';
+    echo '</div>';
+    echo '</div>';
+}
+
+foreach ($symbols as $symbol) {
     renderChartCard($db, $cfg, $symbol, '15', 400);
 }
 
 // Purchases box on home (same as Purchases view, limited rows).
-$bybitHome = new BybitClient(
-    (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
-    '',
-    '',
-);
-$lastPricesHome = lastPricesForSymbols($bybitHome, $symbols);
 $priceFetchedAtHome = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 $rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
 renderPurchasesTable($rowsHome, $lastPricesHome, $priceFetchedAtHome);

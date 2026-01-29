@@ -86,6 +86,10 @@ function renderHeader(string $title): void
       .purchase-row.pcolor-3 .purchase-id{color:#f6c6d7}
       .purchase-row.pcolor-4 .purchase-id{color:#d9c7f7}
       .purchase-row.pcolor-5 .purchase-id{color:#ffd3b6}
+      .asset-badge{display:inline-flex;align-items:center;gap:8px;font-weight:700}
+      .asset-badge .icon{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+      .asset-badge.eth .icon{background:#e6f0ff;color:#2b4d9d;border:1px solid rgba(43,77,157,.35)}
+      .asset-badge.btc .icon{background:#fff1d6;color:#9a5a00;border:1px solid rgba(154,90,0,.35)}
     </style></head><body><div class="wrap">';
     echo '<div class="top"><div class="brand"><a href="' . h(dashUrl()) . '" aria-label="Dashboard home" style="display:inline-flex"><img src="' . h(dashUrl('assets/boringbot-logo.svg')) . '" alt="boringbot"></a><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';
