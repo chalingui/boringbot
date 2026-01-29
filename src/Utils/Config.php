@@ -23,7 +23,8 @@ final class Config
                 'recv_window' => (int)(getenv('BYBIT_RECV_WINDOW') ?: 5000),
             ],
             'symbols' => [
-                'trade' => getenv('SYMBOL_TRADE') ?: 'ETHUSDT',
+                'trade' => getenv('SYMBOL_TRADE_ETH') ?: (getenv('SYMBOL_TRADE') ?: 'ETHUSDT'),
+                'trade_btc' => getenv('SYMBOL_TRADE_BTC') ?: 'BTCUSDT',
             ],
             'strategy' => [
                 'dca_amount_usdt' => (float)(getenv('DCA_AMOUNT_USDT') ?: 100),

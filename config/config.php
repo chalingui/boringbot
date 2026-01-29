@@ -15,7 +15,8 @@ return [
     ],
 
     'symbols' => [
-        'trade' => getenv('SYMBOL_TRADE') ?: 'ETHUSDT',
+        'trade' => getenv('SYMBOL_TRADE_ETH') ?: (getenv('SYMBOL_TRADE') ?: 'ETHUSDT'),
+        'trade_btc' => getenv('SYMBOL_TRADE_BTC') ?: 'BTCUSDT',
     ],
 
     'strategy' => [

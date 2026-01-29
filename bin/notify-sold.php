@@ -77,13 +77,14 @@ if ($p === null) {
 
 $sellUsdt = (float)($p['sell_usdt'] ?? 0.0);
 $profitUsdt = (float)($p['profit_usdt'] ?? 0.0);
+$symbol = (string)($p['symbol'] ?? '');
 if ($sellUsdt <= 0) {
     fwrite(STDERR, "Purchase #{$id} has no sell_usdt recorded.\n");
     exit(1);
 }
 
 try {
-    $notifier->sold($id, $sellUsdt, $profitUsdt);
+    $notifier->sold($id, $symbol === '' ? 'ETHUSDT' : $symbol, $sellUsdt, $profitUsdt);
     fwrite(STDOUT, "OK\n");
     exit(0);
 } catch (Throwable $e) {
@@ -91,4 +92,3 @@ try {
     fwrite(STDERR, "ERROR: {$e->getMessage()}\n");
     exit(1);
 }
-

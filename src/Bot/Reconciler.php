@@ -28,6 +28,11 @@ final class Reconciler
         $this->reconcileAsset('ETH');
     }
 
+    public function reconcileBtc(): void
+    {
+        $this->reconcileAsset('BTC');
+    }
+
     private function reconcileAsset(string $asset): void
     {
         $bybit = $this->bybit->walletBalance($asset);

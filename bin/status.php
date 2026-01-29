@@ -113,8 +113,14 @@ if ($id !== null && $id > 0) {
         echo "Purchase #{$id} not found.\n";
         exit(1);
     }
+    $symbol = (string)($p['symbol'] ?? '');
+    if ($symbol === '') {
+        $symbol = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
+    }
+    $baseAsset = str_ends_with($symbol, 'USDT') ? substr($symbol, 0, -4) : $symbol;
 
     echo "Purchase #{$id}\n";
+    echo "- symbol: {$symbol}\n";
     echo "- status: {$p['status']}\n";
     echo "- created_at: " . $fmtDbDt((string)$p['created_at']) . "\n";
     echo "- buy_usdt: {$p['buy_usdt']}\n";
@@ -149,7 +155,7 @@ if ($id !== null && $id > 0) {
     }
 
     if ($p['status'] === 'OPEN' && $p['sell_price'] !== null && $p['sell_qty'] !== null) {
-        $last = $bybit->tickerLastPrice((string)$cfg['symbols']['trade']);
+        $last = $bybit->tickerLastPrice($symbol);
         if ($last === null) {
             echo "Target gap: N/A (cannot fetch ticker)\n";
             exit(0);
@@ -163,7 +169,7 @@ if ($id !== null && $id > 0) {
             $missingPerEth = $target - $last;
             $missingTotal = $missingPerEth * $qty;
             $missingPct = (($target / $last) - 1.0) * 100.0;
-            echo sprintf("Target gap: %.4f%% | %.4f USDT/ETH | %.4f USDT total\n", $missingPct, $missingPerEth, $missingTotal);
+            echo sprintf("Target gap: %.4f%% | %.4f USDT/%s | %.4f USDT total\n", $missingPct, $missingPerEth, $baseAsset, $missingTotal);
         }
     }
 
@@ -171,11 +177,12 @@ if ($id !== null && $id > 0) {
 }
 
 echo "Purchases\n";
-$rows = $db->fetchAll('SELECT id, created_at, status, buy_usdt, buy_price, buy_qty, sell_price, sell_usdt FROM purchases ORDER BY id DESC');
+$rows = $db->fetchAll('SELECT id, symbol, created_at, status, buy_usdt, buy_price, buy_qty, sell_price, sell_usdt FROM purchases ORDER BY id DESC');
 foreach ($rows as $p) {
     echo sprintf(
-        "- #%d %s %s buy_usdt=%.2f buy_price=%s buy_qty=%s sell_price=%s sell_usdt=%s\n",
+        "- #%d %s %s %s buy_usdt=%.2f buy_price=%s buy_qty=%s sell_price=%s sell_usdt=%s\n",
         (int)$p['id'],
+        (string)($p['symbol'] ?? ''),
         $fmtDbDt((string)$p['created_at']),
         $p['status'],
         (float)$p['buy_usdt'],

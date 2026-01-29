@@ -19,12 +19,15 @@ final class PurchaseManager
     private const STATUS_SOLD = 'SOLD';
     private const STATUS_NEEDS_FUNDS = 'NEEDS_FUNDS';
 
+    /** @var array<int, string> */
+    private array $tradeSymbols = [];
+
     public function __construct(
         private readonly Database $db,
         private readonly BybitClient $bybit,
         private readonly ?Notifier $notifier,
         private readonly Logger $logger,
-        private readonly string $symbolTrade,
+        array $tradeSymbols,
         private readonly float $dcaAmountUsdt,
         private readonly int $dcaIntervalDays,
         private readonly int $dcaOffsetHours,
@@ -40,7 +43,9 @@ final class PurchaseManager
         private readonly string $transferBaseAssetToAccount,
         private readonly bool $dryRun,
     ) {
+        $this->tradeSymbols = $this->normalizeSymbols($tradeSymbols);
     }
+
 
     public function tick(): void
     {
@@ -64,7 +69,15 @@ final class PurchaseManager
 
     private function ensureBalanceRows(): void
     {
-        foreach (['USDT', 'ETH'] as $asset) {
+        $assets = ['USDT'];
+        foreach ($this->tradeSymbols as $symbol) {
+            $base = $this->baseAssetFromSymbol($symbol);
+            if ($base !== '') {
+                $assets[] = $base;
+            }
+        }
+        $assets = array_values(array_unique($assets));
+        foreach ($assets as $asset) {
             $this->db->exec('INSERT OR IGNORE INTO balances(asset, amount) VALUES(:a, 0)', [':a' => $asset]);
         }
     }
@@ -85,7 +98,8 @@ final class PurchaseManager
                 continue;
             }
 
-            $order = $this->bybit->getOrder($this->symbolTrade, (string)$p['buy_order_id']);
+            $symbol = $this->symbolFromPurchase($p);
+            $order = $this->bybit->getOrder($symbol, (string)$p['buy_order_id']);
             if (!is_array($order)) {
                 continue;
             }
@@ -112,7 +126,7 @@ final class PurchaseManager
             // Some accounts pay spot fees in base asset (e.g., ETH). If so, the sellable qty is net of fees.
             $feeCurrency = (string)($order['feeCurrency'] ?? '');
             $fee = isset($order['cumExecFee']) ? (float)$order['cumExecFee'] : 0.0;
-            $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+            $baseAsset = $this->baseAssetFromSymbol($symbol);
             $netQty = $qty;
             if ($fee > 0 && $feeCurrency !== '' && $baseAsset !== '' && $feeCurrency === $baseAsset) {
                 $netQty = max(0.0, $qty - $fee);
@@ -141,10 +155,11 @@ final class PurchaseManager
             $targetPrice = $avgPrice * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
             $sellOrderId = null;
             try {
-                $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $netQty, $targetPrice);
+                $sellOrderId = $this->bybit->createLimitSell($symbol, $netQty, $targetPrice);
             } catch (Throwable $e) {
                 $this->logger->error('Failed to place limit sell; will retry', [
                     'purchase_id' => $p['id'],
+                    'symbol' => $symbol,
                     'error' => $e->getMessage(),
                 ]);
             }
@@ -171,9 +186,12 @@ final class PurchaseManager
                         ':id' => $p['id'],
                     ]
                 );
-                $this->addBalance('ETH', $netQty);
+                if ($baseAsset !== '') {
+                    $this->addBalance($baseAsset, $netQty);
+                }
                 $this->insertEvent($sellOrderId === null ? 'BUY_FILLED_SELL_FAILED' : 'BUY_FILLED_SELL_PLACED', [
                     'purchase_id' => (int)$p['id'],
+                    'symbol' => $symbol,
                     'buy_order_id' => (string)$p['buy_order_id'],
                     'buy_qty' => $this->fmt8($netQty),
                     'buy_price' => $this->fmt8($avgPrice),
@@ -189,7 +207,7 @@ final class PurchaseManager
             }
 
             if (!$this->dryRun && $this->notifier !== null) {
-                $this->notifier->bought((int)$p['id'], $this->symbolTrade, (float)$p['buy_usdt'], $netQty, $avgPrice);
+                $this->notifier->bought((int)$p['id'], $symbol, (float)$p['buy_usdt'], $netQty, $avgPrice);
             }
         }
     }
@@ -214,12 +232,14 @@ final class PurchaseManager
             }
             $targetPrice = $price * (1.0 + ((float)$p['sell_markup_pct'] / 100.0));
 
+            $symbol = $this->symbolFromPurchase($p);
+
             // If fees were taken in base asset, available balance may be slightly lower than recorded qty.
-            $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+            $baseAsset = $this->baseAssetFromSymbol($symbol);
             $avail = null;
             $wallet = null;
             $transfer = null;
-            $filters = $this->bybit->orderFilters($this->symbolTrade);
+            $filters = $this->bybit->orderFilters($symbol);
             $minQty = isset($filters['minOrderQty']) ? (float)$filters['minOrderQty'] : null;
             $minAmt = isset($filters['minOrderAmt']) ? (float)$filters['minOrderAmt'] : null;
             $qtyStepStr = (string)($filters['qtyStep'] ?? '');
@@ -259,7 +279,7 @@ final class PurchaseManager
                     && is_float($wallet) && $wallet > 0
                     && (!is_float($transfer) || $transfer <= 0)
                 ) {
-                    if ($this->maybeLinkExistingSellOrder($p, $targetPrice, $qty)) {
+                    if ($this->maybeLinkExistingSellOrder($p, $symbol, $targetPrice, $qty)) {
                         continue;
                     }
                     $transferred = $this->maybeAutoTransferBaseAsset($p, $baseAsset, $qty);
@@ -289,7 +309,9 @@ final class PurchaseManager
                             ':q' => $qty,
                             ':id' => $p['id'],
                         ]);
-                        $this->addBalance('ETH', -$diff);
+                        if ($baseAsset !== '') {
+                            $this->addBalance($baseAsset, -$diff);
+                        }
                         $this->insertEvent('BUY_QTY_ADJUSTED', [
                             'purchase_id' => (int)$p['id'],
                             'diff' => $diff,
@@ -423,9 +445,9 @@ final class PurchaseManager
                 continue;
             }
             try {
-                $sellOrderId = $this->bybit->createLimitSell($this->symbolTrade, $sellQty, $targetPrice);
+                $sellOrderId = $this->bybit->createLimitSell($symbol, $sellQty, $targetPrice);
             } catch (Throwable $e) {
-                $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+                $baseAsset = $this->baseAssetFromSymbol($symbol);
                 $avail = null;
                 $wallet = null;
                 if ($baseAsset !== '') {
@@ -440,7 +462,7 @@ final class PurchaseManager
                 $this->logger->error('Retry sell placement failed', [
                     'purchase_id' => $p['id'],
                     'error' => $e->getMessage(),
-                    'symbol' => $this->symbolTrade,
+                    'symbol' => $symbol,
                     'attempt_qty' => $this->fmt8($sellQty),
                     'attempt_price' => $this->fmt8($targetPrice),
                     'base_asset' => $baseAsset,
@@ -453,7 +475,7 @@ final class PurchaseManager
 
             $this->logger->info('Limit sell placed (retry from HOLDING)', [
                 'purchase_id' => (int)$p['id'],
-                'symbol' => $this->symbolTrade,
+                'symbol' => $symbol,
                 'sell_order_id' => $sellOrderId,
                 'sell_qty' => $this->fmt8($sellQty),
                 'sell_price' => $this->fmt8($targetPrice),
@@ -482,7 +504,7 @@ final class PurchaseManager
                     'sell_order_id' => $sellOrderId,
                     'sell_price' => $this->fmt8($targetPrice),
                     'sell_qty' => $this->fmt8($sellQty),
-                    'symbol' => $this->symbolTrade,
+                    'symbol' => $symbol,
                 ]);
                 $this->db->commit();
             } catch (Throwable $e) {
@@ -508,7 +530,8 @@ final class PurchaseManager
                 continue;
             }
 
-            $order = $this->bybit->getOrder($this->symbolTrade, (string)$p['sell_order_id']);
+            $symbol = $this->symbolFromPurchase($p);
+            $order = $this->bybit->getOrder($symbol, (string)$p['sell_order_id']);
             if (!is_array($order)) {
                 continue;
             }
@@ -544,7 +567,7 @@ final class PurchaseManager
                 $profitUsdt = 0.0;
             }
 
-            $baseAsset = $this->baseAssetFromSymbol($this->symbolTrade);
+            $baseAsset = $this->baseAssetFromSymbol($symbol);
             if ($baseAsset !== '') {
                 $balanceInfo = $this->bybit->walletBalanceInfo($baseAsset);
                 $this->logger->info('Base asset balance snapshot after sell fill', [
@@ -559,6 +582,7 @@ final class PurchaseManager
 
             $this->logger->info('Sell filled; realizing principal and profit', [
                 'purchase_id' => $p['id'],
+                'symbol' => $symbol,
                 'sell_usdt' => $sellUsdt,
                 'profit_usdt' => $profitUsdt,
             ]);
@@ -655,7 +679,9 @@ final class PurchaseManager
                     ]
                 );
 
-                $this->addBalance('ETH', -$sellQty);
+                if ($baseAsset !== '') {
+                    $this->addBalance($baseAsset, -$sellQty);
+                }
                 $ledgerUsdt = 0.0;
                 if (!$principalTransferred) {
                     $ledgerUsdt += $buyUsdt;
@@ -673,6 +699,7 @@ final class PurchaseManager
                     'sell_usdt' => $sellUsdt,
                     'principal_usdt' => $buyUsdt,
                     'profit_usdt' => $profitUsdt,
+                    'symbol' => $symbol,
                 ]);
                 $this->db->commit();
             } catch (Throwable $e) {
@@ -681,7 +708,7 @@ final class PurchaseManager
             }
 
             if (!$this->dryRun && $this->notifier !== null) {
-                $this->notifier->sold((int)$p['id'], $sellUsdt, $profitUsdt);
+                $this->notifier->sold((int)$p['id'], $symbol, $sellUsdt, $profitUsdt);
             }
         }
     }
@@ -689,10 +716,14 @@ final class PurchaseManager
     private function placeNewPurchaseIfDue(): void
     {
         $nowUtc = new DateTimeImmutable('now', new \DateTimeZone('UTC'));
-        $latest = $this->db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
-        if ($latest !== null) {
-            $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
-            $dueAt = $last->add(new DateInterval('P' . $this->dcaIntervalDays . 'D'));
+        if ($this->tradeSymbols === []) {
+            $this->logger->warn('No trade symbols configured; skipping DCA.');
+            return;
+        }
+
+        $lastDca = $this->getLastDcaAt();
+        if ($lastDca !== null) {
+            $dueAt = $lastDca->add(new DateInterval('P' . $this->dcaIntervalDays . 'D'));
             if ($this->dcaOffsetHours !== 0) {
                 $offset = new DateInterval('PT' . abs($this->dcaOffsetHours) . 'H');
                 $dueAt = $this->dcaOffsetHours > 0 ? $dueAt->add($offset) : $dueAt->sub($offset);
@@ -707,8 +738,9 @@ final class PurchaseManager
                     $leadSeconds = $this->noFundsLeadHours * 3600;
                     if ($secondsUntilDue > 0 && $secondsUntilDue <= $leadSeconds) {
                         $usdt = $this->getBalance('USDT');
-                        if ($usdt + 1e-9 < $this->dcaAmountUsdt) {
-                            $this->notifier->insufficientFundsLead($this->dcaAmountUsdt, $usdt, $dueAt, $this->noFundsLeadHours);
+                        $needUsdt = $this->dcaAmountUsdt * count($this->tradeSymbols);
+                        if ($usdt + 1e-9 < $needUsdt) {
+                            $this->notifier->insufficientFundsLead($needUsdt, $usdt, $dueAt, $this->noFundsLeadHours);
                         }
                     }
                 }
@@ -716,112 +748,125 @@ final class PurchaseManager
             }
         }
 
+        $needUsdt = $this->dcaAmountUsdt * count($this->tradeSymbols);
         $usdt = $this->getBalance('USDT');
-        if ($usdt + 1e-9 < $this->dcaAmountUsdt) {
+        if ($usdt + 1e-9 < $needUsdt) {
             $this->logger->info('Not enough USDT in bot balance for DCA', [
-                'need' => $this->dcaAmountUsdt,
+                'need' => $needUsdt,
                 'have' => $usdt,
+                'symbols' => $this->tradeSymbols,
             ]);
             if (!$this->dryRun && $this->notifier !== null) {
-                $this->notifier->insufficientFunds($this->dcaAmountUsdt, $usdt);
+                $this->notifier->insufficientFunds($needUsdt, $usdt);
             }
             return;
         }
 
-            $this->logger->info('Creating new purchase', [
-                'amount_usdt' => $this->dcaAmountUsdt,
-                'symbol' => $this->symbolTrade,
-                'sell_markup_pct' => $this->sellMarkupPct,
-                'dry_run' => $this->dryRun,
-            ]);
+        $this->logger->info('Creating new purchases (batch)', [
+            'amount_usdt_each' => $this->dcaAmountUsdt,
+            'symbols' => $this->tradeSymbols,
+            'sell_markup_pct' => $this->sellMarkupPct,
+            'dry_run' => $this->dryRun,
+        ]);
 
         if ($this->dryRun) {
-            $ticker = $this->bybit->tickerLastPrice($this->symbolTrade);
-            $buyPrice = $ticker ?? 0.0;
-            if ($buyPrice <= 0) {
-                $buyPrice = 0.0;
+            foreach ($this->tradeSymbols as $symbol) {
+                $ticker = $this->bybit->tickerLastPrice($symbol);
+                $buyPrice = $ticker ?? 0.0;
+                if ($buyPrice <= 0) {
+                    $buyPrice = 0.0;
+                }
+
+                $buyQty = $buyPrice > 0 ? ($this->dcaAmountUsdt / $buyPrice) : 0.0;
+                $targetPrice = $buyPrice > 0 ? ($buyPrice * (1.0 + $this->sellMarkupPct / 100.0)) : 0.0;
+
+                $this->logger->info('DRY-RUN would create purchase and place orders', [
+                    'amount_usdt' => $this->dcaAmountUsdt,
+                    'symbol' => $symbol,
+                    'last_price' => $ticker,
+                    'buy_price' => $this->fmt8($buyPrice),
+                    'buy_qty' => $this->fmt8($buyQty),
+                    'sell_target_price' => $this->fmt8($targetPrice),
+                    'sell_markup_pct' => $this->sellMarkupPct,
+                ]);
             }
-
-            $buyQty = $buyPrice > 0 ? ($this->dcaAmountUsdt / $buyPrice) : 0.0;
-            $targetPrice = $buyPrice > 0 ? ($buyPrice * (1.0 + $this->sellMarkupPct / 100.0)) : 0.0;
-
-            $this->logger->info('DRY-RUN would create purchase and place orders', [
-                'amount_usdt' => $this->dcaAmountUsdt,
-                'symbol' => $this->symbolTrade,
-                'last_price' => $ticker,
-                'buy_price' => $this->fmt8($buyPrice),
-                'buy_qty' => $this->fmt8($buyQty),
-                'sell_target_price' => $this->fmt8($targetPrice),
-                'sell_markup_pct' => $this->sellMarkupPct,
-            ]);
             return;
         }
 
-        $purchaseId = 0;
+        $purchaseIds = [];
+        $batchCreatedAt = $nowUtc->format('Y-m-d H:i:s');
         try {
             $this->db->begin();
-            $purchaseId = $this->db->insert(
-                'INSERT INTO purchases(buy_usdt, status, sell_markup_pct) VALUES(:u, :s, :m)',
-                [
-                    ':u' => $this->dcaAmountUsdt,
-                    ':s' => self::STATUS_BUYING,
-                    ':m' => $this->sellMarkupPct,
-                ]
-            );
-            $this->addBalance('USDT', -$this->dcaAmountUsdt);
-            $this->insertEvent('BUY_CREATED', [
-                'purchase_id' => $purchaseId,
-                'buy_usdt' => $this->dcaAmountUsdt,
-                'symbol' => $this->symbolTrade,
-                'dry_run' => $this->dryRun,
-            ]);
+            foreach ($this->tradeSymbols as $symbol) {
+                $purchaseId = $this->db->insert(
+                    'INSERT INTO purchases(symbol, buy_usdt, status, sell_markup_pct, created_at) VALUES(:sym, :u, :s, :m, :c)',
+                    [
+                        ':sym' => $symbol,
+                        ':u' => $this->dcaAmountUsdt,
+                        ':s' => self::STATUS_BUYING,
+                        ':m' => $this->sellMarkupPct,
+                        ':c' => $batchCreatedAt,
+                    ]
+                );
+                if ($purchaseId <= 0) {
+                    throw new RuntimeException('Failed to create purchase.');
+                }
+                $purchaseIds[$symbol] = $purchaseId;
+                $this->addBalance('USDT', -$this->dcaAmountUsdt);
+                $this->insertEvent('BUY_CREATED', [
+                    'purchase_id' => $purchaseId,
+                    'buy_usdt' => $this->dcaAmountUsdt,
+                    'symbol' => $symbol,
+                    'dry_run' => $this->dryRun,
+                ]);
+            }
+            $this->setMeta('last_dca_at', $batchCreatedAt);
             $this->db->commit();
         } catch (Throwable $e) {
             $this->db->rollBack();
             throw $e;
         }
 
-        if ($purchaseId <= 0) {
-            throw new RuntimeException('Failed to create purchase.');
-        }
+        foreach ($purchaseIds as $symbol => $purchaseId) {
+            if (!$this->dryRun && $this->notifier !== null) {
+                $this->notifier->purchaseCreated($purchaseId, $this->dcaAmountUsdt, $symbol);
+            }
 
-        if (!$this->dryRun && $this->notifier !== null) {
-            $this->notifier->purchaseCreated($purchaseId, $this->dcaAmountUsdt, $this->symbolTrade);
-        }
-
-        try {
-            $buyOrderId = $this->bybit->createMarketBuyByQuote($this->symbolTrade, $this->dcaAmountUsdt);
-            $this->db->exec(
-                'UPDATE purchases SET buy_order_id = :o WHERE id = :id',
-                [':o' => $buyOrderId, ':id' => $purchaseId]
-            );
-            $this->insertEvent('BUY_ORDER_PLACED', [
-                'purchase_id' => $purchaseId,
-                'buy_order_id' => $buyOrderId,
-                'symbol' => $this->symbolTrade,
-            ]);
-            $this->logger->info('Market buy placed', ['purchase_id' => $purchaseId, 'orderId' => $buyOrderId]);
-        } catch (Throwable $e) {
-            $this->logger->error('Failed to place market buy; refunding ledger USDT and marking purchase ERROR', [
-                'purchase_id' => $purchaseId,
-                'error' => $e->getMessage(),
-            ]);
             try {
-                $this->db->begin();
-                $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
-                    ':st' => 'ERROR',
-                    ':id' => $purchaseId,
-                ]);
-                $this->addBalance('USDT', $this->dcaAmountUsdt);
-                $this->insertEvent('BUY_FAILED', [
+                $buyOrderId = $this->bybit->createMarketBuyByQuote($symbol, $this->dcaAmountUsdt);
+                $this->db->exec(
+                    'UPDATE purchases SET buy_order_id = :o WHERE id = :id',
+                    [':o' => $buyOrderId, ':id' => $purchaseId]
+                );
+                $this->insertEvent('BUY_ORDER_PLACED', [
                     'purchase_id' => $purchaseId,
-                    'symbol' => $this->symbolTrade,
+                    'buy_order_id' => $buyOrderId,
+                    'symbol' => $symbol,
+                ]);
+                $this->logger->info('Market buy placed', ['purchase_id' => $purchaseId, 'orderId' => $buyOrderId, 'symbol' => $symbol]);
+            } catch (Throwable $e) {
+                $this->logger->error('Failed to place market buy; refunding ledger USDT and marking purchase ERROR', [
+                    'purchase_id' => $purchaseId,
+                    'symbol' => $symbol,
                     'error' => $e->getMessage(),
                 ]);
-                $this->db->commit();
-            } catch (Throwable $e2) {
-                $this->db->rollBack();
-                throw $e2;
+                try {
+                    $this->db->begin();
+                    $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
+                        ':st' => 'ERROR',
+                        ':id' => $purchaseId,
+                    ]);
+                    $this->addBalance('USDT', $this->dcaAmountUsdt);
+                    $this->insertEvent('BUY_FAILED', [
+                        'purchase_id' => $purchaseId,
+                        'symbol' => $symbol,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $this->db->commit();
+                } catch (Throwable $e2) {
+                    $this->db->rollBack();
+                    throw $e2;
+                }
             }
         }
     }
@@ -835,6 +880,44 @@ final class PurchaseManager
                 ':payload' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             ]
         );
+    }
+
+    private function getMeta(string $k): ?string
+    {
+        $row = $this->db->fetchOne('SELECT v FROM meta WHERE k = :k', [':k' => $k]);
+        return $row === null ? null : (string)$row['v'];
+    }
+
+    private function setMeta(string $k, string $v): void
+    {
+        $this->db->exec('INSERT OR REPLACE INTO meta(k, v) VALUES(:k, :v)', [
+            ':k' => $k,
+            ':v' => $v,
+        ]);
+    }
+
+    private function getLastDcaAt(): ?DateTimeImmutable
+    {
+        $last = $this->getMeta('last_dca_at');
+        if (is_string($last) && $last !== '') {
+            try {
+                return new DateTimeImmutable($last . ' UTC');
+            } catch (Throwable) {
+                // fall through
+            }
+        }
+
+        $latest = $this->db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
+        if ($latest === null || (string)$latest['created_at'] === '') {
+            return null;
+        }
+        try {
+            $dt = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
+        } catch (Throwable) {
+            return null;
+        }
+        $this->setMeta('last_dca_at', $dt->format('Y-m-d H:i:s'));
+        return $dt;
     }
 
     private function getBalance(string $asset): float
@@ -855,11 +938,38 @@ final class PurchaseManager
 
     private function baseAssetFromSymbol(string $symbol): string
     {
-        // This bot is designed for ETH/USDT on Bybit Spot (symbol like ETHUSDT).
+        // Spot symbols like ETHUSDT/BTCUSDT -> base asset prefix.
         if (str_ends_with($symbol, 'USDT')) {
             return substr($symbol, 0, -4);
         }
         return '';
+    }
+
+    private function symbolFromPurchase(array $purchase): string
+    {
+        $symbol = (string)($purchase['symbol'] ?? '');
+        if ($symbol !== '') {
+            return $symbol;
+        }
+        return $this->tradeSymbols[0] ?? 'ETHUSDT';
+    }
+
+    /**
+     * @param array<int, string> $symbols
+     * @return array<int, string>
+     */
+    private function normalizeSymbols(array $symbols): array
+    {
+        $out = [];
+        foreach ($symbols as $symbol) {
+            $symbol = strtoupper(trim((string)$symbol));
+            if ($symbol === '') {
+                continue;
+            }
+            $out[] = $symbol;
+        }
+        $out = array_values(array_unique($out));
+        return $out;
     }
 
     private function fmt8(float $n): string
@@ -890,6 +1000,7 @@ final class PurchaseManager
         if ((string)($purchase['status'] ?? '') === self::STATUS_NEEDS_FUNDS) {
             return;
         }
+        $symbol = $this->symbolFromPurchase($purchase);
         try {
             $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
                 ':st' => self::STATUS_NEEDS_FUNDS,
@@ -898,6 +1009,7 @@ final class PurchaseManager
             $payload = array_merge([
                 'purchase_id' => (int)$purchase['id'],
                 'reason' => $reason,
+                'symbol' => $symbol,
             ], $context);
             $this->insertEvent('NEEDS_FUNDS', $payload);
         } catch (Throwable $e) {
@@ -970,16 +1082,17 @@ final class PurchaseManager
         }
     }
 
-    private function maybeLinkExistingSellOrder(array $purchase, float $targetPrice, float $expectedQty): bool
+    private function maybeLinkExistingSellOrder(array $purchase, string $symbol, float $targetPrice, float $expectedQty): bool
     {
         if ($this->dryRun) {
             return false;
         }
         try {
-            $orders = $this->bybit->openOrders($this->symbolTrade, 'Sell');
+            $orders = $this->bybit->openOrders($symbol, 'Sell');
         } catch (Throwable $e) {
             $this->logger->warn('Failed to list open sell orders', [
                 'purchase_id' => $purchase['id'],
+                'symbol' => $symbol,
                 'error' => $e->getMessage(),
             ]);
             return false;
@@ -1043,6 +1156,7 @@ final class PurchaseManager
                 'sell_order_id' => $best['order_id'],
                 'sell_price' => $best['price'],
                 'sell_qty' => $best['qty'],
+                'symbol' => $symbol,
             ]);
             $this->db->commit();
         } catch (Throwable $e) {
@@ -1051,6 +1165,7 @@ final class PurchaseManager
         }
         $this->logger->info('Linked existing open sell order', [
             'purchase_id' => $purchase['id'],
+            'symbol' => $symbol,
             'sell_order_id' => $best['order_id'],
             'sell_price' => $this->fmt8($best['price']),
             'sell_qty' => $this->fmt8($best['qty']),

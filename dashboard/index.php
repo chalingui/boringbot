@@ -150,23 +150,63 @@ function v($x): string
     return $s === '' ? '—' : $s;
 }
 
-function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrade, string $priceFetchedAt): void
+function tradeSymbols(array $cfg): array
+{
+    $symbols = [
+        (string)($cfg['symbols']['trade'] ?? 'ETHUSDT'),
+        (string)($cfg['symbols']['trade_btc'] ?? 'BTCUSDT'),
+    ];
+    $out = [];
+    foreach ($symbols as $sym) {
+        $sym = strtoupper(trim($sym));
+        if ($sym === '') {
+            continue;
+        }
+        $out[] = $sym;
+    }
+    return array_values(array_unique($out));
+}
+
+function lastPricesForSymbols(BybitClient $bybit, array $symbols): array
+{
+    $out = [];
+    foreach ($symbols as $symbol) {
+        $out[$symbol] = $bybit->tickerLastPrice($symbol);
+    }
+    return $out;
+}
+
+function renderPurchasesTable(array $rows, array $lastPrices, string $priceFetchedAt): void
 {
     echo '<div class="card">';
-    echo '<div class="muted" style="margin-bottom:8px">Ticker ' . h($symbolTrade) . ': <b>' . h($lastPrice === null ? 'n/a' : number_format($lastPrice, 2, '.', '')) . '</b> <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
+    if ($lastPrices === []) {
+        echo '<div class="muted" style="margin-bottom:8px">Ticker n/a <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
+    } else {
+        $tickerBits = [];
+        foreach ($lastPrices as $sym => $price) {
+            $tickerBits[] = h($sym) . ': <b>' . h($price === null ? 'n/a' : number_format((float)$price, 2, '.', '')) . '</b>';
+        }
+        echo '<div class="muted" style="margin-bottom:8px">Tickers ' . implode(' | ', $tickerBits) . ' <span class="muted">(fetch ' . h($priceFetchedAt) . ')</span></div>';
+    }
     echo '<div class="table-wrap"><table><thead><tr>';
-    echo '<th>ID</th><th>Status</th><th>Created</th><th>Duration</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Sell Avg Px</th><th>Last Px</th><th>Δ Px</th><th>Progress</th><th>Profit</th>';
+    echo '<th>ID</th><th>Symbol</th><th>Status</th><th>Created</th><th>Duration</th><th>Buy USDT</th><th>Buy Px</th><th>Buy Qty</th><th>Target Px</th><th>Sell Avg Px</th><th>Last Px</th><th>Δ Px</th><th>Progress</th><th>Profit</th>';
     echo '</tr></thead><tbody>';
 
     foreach ($rows as $p) {
         $id = (int)$p['id'];
         $status = (string)$p['status'];
+        $symbol = (string)($p['symbol'] ?? '');
+        if ($symbol === '') {
+            $symbol = 'ETHUSDT';
+        }
+        $baseAsset = str_ends_with($symbol, 'USDT') ? substr($symbol, 0, -4) : $symbol;
+        $lastPrice = $lastPrices[$symbol] ?? null;
         $colorClass = $status === 'SOLD' ? '' : ('pcolor-' . ($id % 6));
 
         $targetPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
         $deltaPx = null;
         if ($status !== 'SOLD' && $lastPrice !== null && $targetPx !== null) {
-            $deltaPx = $targetPx - $lastPrice; // USDT per ETH
+            $deltaPx = $targetPx - $lastPrice; // USDT per base asset
         }
         $sellQty = $p['sell_qty'] !== null ? (float)$p['sell_qty'] : null;
         $sellUsdt = $p['sell_usdt'] !== null ? (float)$p['sell_usdt'] : null;
@@ -190,6 +230,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
 
         echo '<tr id="p' . h((string)$id) . '" class="purchase-row ' . h($colorClass) . '">';
         echo '<td><a class="purchase-id" href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
+        echo '<td>' . h($symbol) . '</td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '<br><span class="muted">' . h(agoDbDt((string)$p['created_at'])) . '</span></td>';
         echo '<td>' . h($durationLabel) . '</td>';
@@ -210,7 +251,7 @@ function renderPurchasesTable(array $rows, ?float $lastPrice, string $symbolTrad
             if ($deltaPx <= 0) {
                 echo '<td><span class="pill OPEN">ready</span></td>';
             } else {
-                echo '<td>' . h(number_format($deltaPx, 2, '.', '')) . ' USDT/ETH</td>';
+                echo '<td>' . h(number_format($deltaPx, 2, '.', '')) . ' USDT/' . h($baseAsset) . '</td>';
             }
         }
 
@@ -319,14 +360,14 @@ function renderMovementsTable(Database $db, int $limit = 50): void
     echo '</tbody></table></div>';
 }
 
-function renderChartCard(Database $db, array $cfg, string $interval = '15', int $limit = 400): void
+function renderChartCard(Database $db, array $cfg, string $symbol, string $interval = '15', int $limit = 400): void
 {
     $bybit = new BybitClient(
         (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
         '',
         '',
     );
-    $symbol = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
+    $baseAsset = str_ends_with($symbol, 'USDT') ? substr($symbol, 0, -4) : $symbol;
 
     if ($limit < 50) {
         $limit = 50;
@@ -335,23 +376,36 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
         $limit = 1000;
     }
 
-    $purchases = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL ORDER BY id DESC');
+    $purchases = $db->fetchAll(
+        'SELECT * FROM purchases WHERE symbol = :sym AND status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL ORDER BY id DESC',
+        [':sym' => $symbol]
+    );
     $hasOpenPurchases = $purchases !== [];
     if (!$hasOpenPurchases) {
-        $purchases = $db->fetchAll('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 50');
+        $purchases = $db->fetchAll(
+            'SELECT * FROM purchases WHERE symbol = :sym AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 50',
+            [':sym' => $symbol]
+        );
     }
     $lastSold = null;
     if (!$hasOpenPurchases) {
         $lastSold = $db->fetchOne(
-            'SELECT * FROM purchases WHERE status = "SOLD" AND sell_price IS NOT NULL ORDER BY COALESCE(sell_filled_at, created_at) DESC, id DESC LIMIT 1'
+            'SELECT * FROM purchases WHERE symbol = :sym AND status = "SOLD" AND sell_price IS NOT NULL ORDER BY COALESCE(sell_filled_at, created_at) DESC, id DESC LIMIT 1',
+            [':sym' => $symbol]
         );
         if (!is_array($lastSold)) {
             $lastSold = null;
         }
     }
-    $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
+    $primaryPurchase = $db->fetchOne(
+        'SELECT * FROM purchases WHERE symbol = :sym AND status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1',
+        [':sym' => $symbol]
+    );
     if (!is_array($primaryPurchase)) {
-        $primaryPurchase = $db->fetchOne('SELECT * FROM purchases WHERE buy_price IS NOT NULL ORDER BY id DESC LIMIT 1');
+        $primaryPurchase = $db->fetchOne(
+            'SELECT * FROM purchases WHERE symbol = :sym AND buy_price IS NOT NULL ORDER BY id DESC LIMIT 1',
+            [':sym' => $symbol]
+        );
     }
 
     $startDt = null;
@@ -360,7 +414,8 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $openStart = $db->fetchOne(
         'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
          FROM purchases
-         WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL'
+         WHERE symbol = :sym AND status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL',
+        [':sym' => $symbol]
     );
     if (is_array($openStart) && ($openStart['first_at'] ?? '') !== '') {
         try {
@@ -415,7 +470,7 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     $series = $bybit->klines($symbol, $interval, $startMs, $endMs, $limit);
 
     echo '<div class="card">';
-    echo '<div class="muted">Precio ETH vs tiempo</div>';
+    echo '<div class="muted">Precio ' . h($baseAsset) . ' vs tiempo</div>';
 
     if ($series === []) {
         echo '<div class="muted" style="margin-top:8px">No hay datos de kline para ' . h($symbol) . '.</div></div>';
@@ -462,12 +517,15 @@ function renderChartCard(Database $db, array $cfg, string $interval = '15', int 
     // Next DCA marker (based on last purchase created_at + interval days, like the bot does).
     $nextBuyMs = null;
     $nextBuyLocal = null;
+    $lastDca = $db->fetchOne('SELECT v FROM meta WHERE k = "last_dca_at"');
     $latest = $db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
-    if (is_array($latest) && isset($latest['created_at'])) {
+    $lastDcaAt = is_array($lastDca) && isset($lastDca['v']) ? (string)$lastDca['v'] : null;
+    if (($lastDcaAt !== null && $lastDcaAt !== '') || (is_array($latest) && isset($latest['created_at']))) {
         $days = (int)($cfg['strategy']['dca_interval_days'] ?? 7);
         if ($days > 0) {
             try {
-                $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
+                $lastSource = ($lastDcaAt !== null && $lastDcaAt !== '') ? $lastDcaAt : (string)$latest['created_at'];
+                $last = new DateTimeImmutable($lastSource . ' UTC');
                 $dueAt = $last->add(new DateInterval('P' . $days . 'D'));
                 $offsetHours = (int)($cfg['strategy']['dca_offset_hours'] ?? 0);
                 if ($offsetHours !== 0) {
@@ -854,12 +912,12 @@ if ($view === 'purchases') {
         '',
         '',
     );
-    $symbolTrade = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
-    $lastPrice = $bybit->tickerLastPrice($symbolTrade);
+    $symbols = tradeSymbols($cfg);
+    $lastPrices = lastPricesForSymbols($bybit, $symbols);
     $priceFetchedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
     $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
-    renderPurchasesTable($rows, $lastPrice, $symbolTrade, $priceFetchedAt);
+    renderPurchasesTable($rows, $lastPrices, $priceFetchedAt);
     echo '<div class="muted" style="margin-top:8px">Nota: la compra pasa de BUYING→OPEN cuando el cron detecta el fill y coloca la LIMIT SELL.</div>';
     renderFooter();
     exit;
@@ -925,12 +983,14 @@ if (is_string($lastRecon) && $lastRecon !== '') {
 
 $nextBuyLocal = null;
 $nextBuyIn = null;
+$lastDcaRow = $db->fetchOne('SELECT v FROM meta WHERE k = "last_dca_at"');
 $latest = $db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
 $lastBuy = null;
 $lastBuyLocal = null;
 $lastBuyAgo = null;
-if (is_array($latest) && isset($latest['created_at'])) {
-    $lastBuy = (string)$latest['created_at'];
+$lastDcaAt = is_array($lastDcaRow) && isset($lastDcaRow['v']) ? (string)$lastDcaRow['v'] : null;
+if (($lastDcaAt !== null && $lastDcaAt !== '') || (is_array($latest) && isset($latest['created_at']))) {
+    $lastBuy = ($lastDcaAt !== null && $lastDcaAt !== '') ? $lastDcaAt : (string)$latest['created_at'];
     $lastBuyAgo = agoDbDt($lastBuy);
     $lastBuyLocal = fmtDbDt($lastBuy);
     if ($lastBuyLocal !== '') {
@@ -945,7 +1005,7 @@ if (is_array($latest) && isset($latest['created_at'])) {
     $days = (int)($cfg['strategy']['dca_interval_days'] ?? 7);
     if ($days > 0) {
         try {
-            $last = new DateTimeImmutable((string)$latest['created_at'] . ' UTC');
+            $last = new DateTimeImmutable($lastBuy . ' UTC');
             $dueAt = $last->add(new DateInterval('P' . $days . 'D'));
             $offsetHours = (int)($cfg['strategy']['dca_offset_hours'] ?? 0);
             if ($offsetHours !== 0) {
@@ -966,6 +1026,7 @@ if (is_array($latest) && isset($latest['created_at'])) {
     }
 }
 
+$symbols = tradeSymbols($cfg);
 echo '<div class="grid">';
 echo '<div class="card col3"><div class="muted">Balances (ledger)</div><div class="kpi stack">';
 foreach ($balances as $b) {
@@ -981,7 +1042,7 @@ echo '<div class="card col9"><div class="muted">Resumen</div>';
 echo '<div class="kpi">';
 echo '<div class="item"><div class="muted">Activas</div><div style="font-size:18px">' . h((string)($open['c'] ?? '0')) . '</div></div>';
 echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:18px">' . h((string)($sold['c'] ?? '0')) . '</div></div>';
-echo '<div class="item"><div class="muted">Trade symbol</div><div style="font-size:18px">' . h((string)($cfg['symbols']['trade'] ?? '')) . '</div></div>';
+echo '<div class="item"><div class="muted">Trade symbols</div><div style="font-size:18px">' . h(implode(', ', $symbols)) . '</div></div>';
 echo '<div class="item"><div class="muted">DCA</div><div style="font-size:18px">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
 echo '<div class="item"><div class="muted">Sell markup</div><div style="font-size:18px">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
 echo '<div class="item"><div class="muted">Última compra</div><div style="font-size:18px">' . h($lastBuyLocal ?? '—') . '</div><div class="muted" style="margin-top:2px">' . h($lastBuyAgo ?? 'n/a') . '</div></div>';
@@ -990,7 +1051,9 @@ echo '<div class="item"><div class="muted">Última actualización</div><div styl
 echo '</div>';
 echo '</div>';
 
-renderChartCard($db, $cfg, '15', 400);
+foreach ($symbols as $symbol) {
+    renderChartCard($db, $cfg, $symbol, '15', 400);
+}
 
 // Purchases box on home (same as Purchases view, limited rows).
 $bybitHome = new BybitClient(
@@ -998,11 +1061,10 @@ $bybitHome = new BybitClient(
     '',
     '',
 );
-$symbolTradeHome = (string)($cfg['symbols']['trade'] ?? 'ETHUSDT');
-$lastPriceHome = $bybitHome->tickerLastPrice($symbolTradeHome);
+$lastPricesHome = lastPricesForSymbols($bybitHome, $symbols);
 $priceFetchedAtHome = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 $rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
-renderPurchasesTable($rowsHome, $lastPriceHome, $symbolTradeHome, $priceFetchedAtHome);
+renderPurchasesTable($rowsHome, $lastPricesHome, $priceFetchedAtHome);
 echo '</div>';
 
 renderFooter();

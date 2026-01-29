@@ -1,6 +1,6 @@
 # boringbot (PHP + SQLite) — Bybit Spot DCA
 
-Bot de DCA semanal para `ETHUSDT` con una venta `LIMIT` al `+5%` (configurable). Cada compra es una entidad independiente (Compra `#N`) y se vende completa (sin ventas parciales en la contabilidad del bot).
+Bot de DCA semanal para `ETHUSDT` y `BTCUSDT` con una venta `LIMIT` al `+5%` (configurable). Cada compra es una entidad independiente (Compra `#N`) y se vende completa (sin ventas parciales en la contabilidad del bot).
 
 ## Requisitos
 - PHP 8.1+ (probado con PHP 8.2)
@@ -18,6 +18,8 @@ cp config/.env.example .env
 - `BYBIT_API_SECRET`
 - `BYBIT_ACCOUNT_TYPE` (recomendado `UNIFIED`)
 - Opcional: `SELL_MARKUP_PCT`, `DCA_AMOUNT_USDT`, `DCA_INTERVAL_DAYS`
+- Opcional: `SYMBOL_TRADE_ETH` (default `ETHUSDT`)
+- Opcional: `SYMBOL_TRADE_BTC` (default `BTCUSDT`)
 
 ## Notificaciones por email (opcional)
 Configurar en `.env` (no commitear credenciales):
@@ -79,15 +81,15 @@ Muestra:
 - Compras `BUYING` / `HOLDING` / `OPEN` / `SOLD`
 - Detalle de compra #N
 - Gap vs target (cuando está `OPEN`)
-- Balances del bot (USDT/ETH)
+- Balances del bot (USDT/ETH/BTC)
 
 ## Lógica de estrategia
-- Cada `DCA_INTERVAL_DAYS` compra `DCA_AMOUNT_USDT` de `ETHUSDT` (market buy por monto en USDT).
+- Cada `DCA_INTERVAL_DAYS` compra `DCA_AMOUNT_USDT` de `ETHUSDT` y `BTCUSDT` (market buy por monto en USDT).
 - Al completarse la compra: crea una orden `LIMIT SELL` al `+SELL_MARKUP_PCT`.
 - Al completarse la venta:
   - `100 USDT` vuelven a `balances.USDT` (capital_pool).
   - `profit = sell_usdt - 100` queda en `balances.USDT` y se acumula como ganancia realizada.
-- Opcional: `SELL_QTY_BUFFER` (default `0`) resta un buffer de ETH al reintentar ventas en `HOLDING` para evitar "Insufficient balance".
+- Opcional: `SELL_QTY_BUFFER` (default `0`) resta un buffer de base asset al reintentar ventas en `HOLDING` para evitar "Insufficient balance".
 
 ## Base de datos
 - SQLite: `db/boringbot.sqlite`

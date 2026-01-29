@@ -38,6 +38,7 @@ final class Database
             throw new PDOException("Cannot read schema file: {$schemaPath}");
         }
         $this->pdo->exec($sql);
+        $this->ensurePurchasesSymbolColumn();
     }
 
     public function begin(): void
@@ -85,5 +86,27 @@ final class Database
         $stmt->execute($params);
         return (int)$this->pdo->lastInsertId();
     }
-}
 
+    private function ensurePurchasesSymbolColumn(): void
+    {
+        try {
+            $cols = $this->fetchAll("PRAGMA table_info(purchases)");
+        } catch (PDOException) {
+            return;
+        }
+
+        $hasSymbol = false;
+        foreach ($cols as $col) {
+            if (($col['name'] ?? null) === 'symbol') {
+                $hasSymbol = true;
+                break;
+            }
+        }
+        if (!$hasSymbol) {
+            $this->pdo->exec("ALTER TABLE purchases ADD COLUMN symbol TEXT NOT NULL DEFAULT 'ETHUSDT'");
+        }
+
+        $this->pdo->exec("UPDATE purchases SET symbol = 'ETHUSDT' WHERE symbol IS NULL OR symbol = ''");
+        $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_purchases_symbol ON purchases(symbol)');
+    }
+}

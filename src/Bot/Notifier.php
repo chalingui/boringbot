@@ -46,12 +46,12 @@ final class Notifier
         );
     }
 
-    public function sold(int $purchaseId, float $sellUsdt, float $profitUsdt): void
+    public function sold(int $purchaseId, string $symbol, float $sellUsdt, float $profitUsdt): void
     {
         $this->sendEvent(
             key: 'sold_' . $purchaseId,
             subject: "[boringbot] Venta ejecutada (Compra #{$purchaseId})",
-            body: "Venta ejecutada para Compra #{$purchaseId}.\nSell: {$sellUsdt} USDT\nProfit: {$profitUsdt} USDT\n"
+            body: "Venta ejecutada para Compra #{$purchaseId}.\nSymbol: {$symbol}\nSell: {$sellUsdt} USDT\nProfit: {$profitUsdt} USDT\n"
         );
     }
 

@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
 
+  symbol TEXT NOT NULL DEFAULT 'ETHUSDT',
+
   buy_usdt REAL NOT NULL,
   buy_order_id TEXT,
   buy_price REAL,
@@ -35,6 +37,7 @@ CREATE TABLE IF NOT EXISTS purchases (
 
 CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);
 CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at);
+CREATE INDEX IF NOT EXISTS idx_purchases_symbol ON purchases(symbol);
 
 CREATE TABLE IF NOT EXISTS events_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,4 +47,3 @@ CREATE TABLE IF NOT EXISTS events_log (
 );
 
 COMMIT;
-

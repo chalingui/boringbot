@@ -20,6 +20,11 @@ $dryRun = in_array('--dry-run', $argv, true);
 $root = dirname(__DIR__);
 $cfg = Config::load($root);
 
+$tradeSymbols = array_values(array_unique(array_filter([
+    (string)($cfg['symbols']['trade'] ?? 'ETHUSDT'),
+    (string)($cfg['symbols']['trade_btc'] ?? 'BTCUSDT'),
+])));
+
 $logger = new Logger($cfg['log_path']);
 $lock = new Lock($cfg['lock_path']);
 if (!$lock->acquire()) {
@@ -88,7 +93,7 @@ try {
         $bybit,
         $notifier,
         $logger,
-        (string)$cfg['symbols']['trade'],
+        $tradeSymbols,
         (float)$cfg['strategy']['dca_amount_usdt'],
         (int)$cfg['strategy']['dca_interval_days'],
         (int)($cfg['strategy']['dca_offset_hours'] ?? 0),

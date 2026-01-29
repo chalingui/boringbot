@@ -43,6 +43,7 @@ try {
     $reconciler = new Reconciler($db, $bybit, $logger, $dryRun);
     $reconciler->reconcileUsdt();
     $reconciler->reconcileEth();
+    $reconciler->reconcileBtc();
 
     $endedAt = new DateTimeImmutable('now', new DateTimeZone('UTC'));
     $setMeta($db, 'last_reconcile_finished_at', $endedAt->format(DATE_ATOM));
