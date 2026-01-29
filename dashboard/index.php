@@ -444,15 +444,15 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
 
     if ($startDt === null) {
         $latestAny = $db->fetchOne(
-            'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
+            'SELECT MAX(COALESCE(buy_filled_at, created_at)) AS last_at
              FROM purchases
              WHERE symbol = :sym
             ',
             [':sym' => $symbol]
         );
-        if (is_array($latestAny) && ($latestAny['first_at'] ?? '') !== '') {
+        if (is_array($latestAny) && ($latestAny['last_at'] ?? '') !== '') {
             try {
-                $startDt = new DateTimeImmutable((string)$latestAny['first_at'] . ' UTC');
+                $startDt = new DateTimeImmutable((string)$latestAny['last_at'] . ' UTC');
             } catch (Throwable) {
                 $startDt = null;
             }
