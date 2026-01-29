@@ -48,12 +48,12 @@ function renderHeader(string $title): void
       .brand img{width:34px;height:34px;display:block}
       .nav{display:flex;gap:10px;flex-wrap:wrap}
       .nav a{padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.03)}
-      .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
-      .card{grid-column:span 12;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+      .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:10px}
+      .card{grid-column:span 12;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
       @media (min-width:900px){.col9{grid-column:span 9}.col6{grid-column:span 6}.col4{grid-column:span 4}.col3{grid-column:span 3}}
-      .kpi{display:flex;gap:16px;flex-wrap:wrap}
-      .kpi .item{min-width:160px}
-      .kpi.stack{flex-direction:column;gap:10px}
+      .kpi{display:flex;gap:12px;flex-wrap:wrap}
+      .kpi .item{min-width:130px}
+      .kpi.stack{flex-direction:column;gap:8px}
       .kpi.stack .item{min-width:0}
       .item.profit{border:1px solid rgba(65,209,139,.35);background:rgba(65,209,139,.08);padding:8px;border-radius:10px}
       .muted{color:var(--muted)}
@@ -64,7 +64,7 @@ function renderHeader(string $title): void
       code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
       pre{white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.2);padding:10px;border-radius:10px;border:1px solid var(--line);max-height:520px;overflow:auto;font-size:11px;line-height:1.3}
       .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;line-height:1.3;white-space:pre-wrap;word-break:break-word}
-      .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:12px}
+      .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--line);font-size:11px}
       .pill.OPEN{border-color:rgba(65,209,139,.4);color:var(--ok)}
       .pill.SOLD{border-color:rgba(159,183,255,.5);color:#9fb7ff}
       .pill.BUYING,.pill.HOLDING{border-color:rgba(255,205,87,.4);color:var(--warn)}
@@ -87,9 +87,7 @@ function renderHeader(string $title): void
       .purchase-row.pcolor-4 .purchase-id{color:#d9c7f7}
       .purchase-row.pcolor-5 .purchase-id{color:#ffd3b6}
       .asset-badge{display:inline-flex;align-items:center;gap:8px;font-weight:700}
-      .asset-badge .icon{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
-      .asset-badge.eth .icon{background:#e6f0ff;color:#2b4d9d;border:1px solid rgba(43,77,157,.35)}
-      .asset-badge.btc .icon{background:#fff1d6;color:#9a5a00;border:1px solid rgba(154,90,0,.35)}
+      .asset-logo{width:22px;height:22px;display:inline-flex;border-radius:50%}
     </style></head><body><div class="wrap">';
     echo '<div class="top"><div class="brand"><a href="' . h(dashUrl()) . '" aria-label="Dashboard home" style="display:inline-flex"><img src="' . h(dashUrl('assets/boringbot-logo.svg')) . '" alt="boringbot"></a><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';

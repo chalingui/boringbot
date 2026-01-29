@@ -1098,10 +1098,12 @@ echo '</div>';
 
 foreach ($symbols as $symbol) {
     $baseAsset = str_ends_with($symbol, 'USDT') ? substr($symbol, 0, -4) : $symbol;
-    $badgeClass = strtolower($baseAsset) === 'btc' ? 'btc' : 'eth';
+    $logo = strtolower($baseAsset) === 'btc'
+        ? dashUrl('assets/btc.svg')
+        : dashUrl('assets/eth.svg');
     $stats = $symbolStats[$symbol] ?? [];
     echo '<div class="card col6">';
-    echo '<div class="asset-badge ' . h($badgeClass) . '"><span class="icon">' . h($baseAsset) . '</span><span>' . h($symbol) . '</span></div>';
+    echo '<div class="asset-badge"><img class="asset-logo" src="' . h($logo) . '" alt="' . h($baseAsset) . '"><span>' . h($symbol) . '</span></div>';
     echo '<div class="kpi" style="margin-top:10px">';
     echo '<div class="item"><div class="muted">Activas</div><div style="font-size:18px">' . h((string)($stats['open'] ?? '0')) . '</div></div>';
     echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:18px">' . h((string)($stats['sold'] ?? '0')) . '</div></div>';
