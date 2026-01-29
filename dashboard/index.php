@@ -690,7 +690,8 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
             ];
         }
     }
-    $chartId = 'chartjs-overlay';
+    $chartSlug = preg_replace('/[^a-z0-9]+/i', '-', strtolower($symbol));
+    $chartId = 'chartjs-' . trim((string)$chartSlug, '-');
     $xMin = (float)$startMs;
     $xMax = $nextBuyMs !== null ? $nextBuyMs : (float)$endMs;
     if ($xMax <= $xMin) {
