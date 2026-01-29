@@ -664,7 +664,7 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
                 $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color, 'ms' => $buyMs];
             }
             if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING', 'NEEDS_FUNDS'], true)) {
-                $sellPxLabel = number_format($sellPx, 2, '.', '');
+                $sellPxLabel = number_format($sellPx, 0, '.', '');
                 $chartSellLines[] = [
                     'id' => $id,
                     'price' => $sellPx,
@@ -854,17 +854,17 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
               ctx.save();
               ctx.fillStyle = ds._labelColor || "#9aa7d6";
               ctx.font = "11px system-ui,-apple-system,Segoe UI,Roboto";
-              ctx.textAlign = "left";
+              ctx.textAlign = "right";
               ctx.textBaseline = "middle";
               const text = String(ds._labelText);
               const pad = 3;
               const metrics = ctx.measureText(text);
               const textW = metrics.width;
               const textH = 12;
-              const x = pt.x + 6;
+              const x = pt.x - 6;
               const y = pt.y;
               ctx.fillStyle = "rgba(11,16,32,0.8)";
-              ctx.fillRect(x - pad, y - textH / 2 - pad, textW + pad * 2, textH + pad * 2);
+              ctx.fillRect(x - textW - pad, y - textH / 2 - pad, textW + pad * 2, textH + pad * 2);
               ctx.fillStyle = ds._labelColor || "#9aa7d6";
               ctx.fillText(text, x, y);
               ctx.restore();
