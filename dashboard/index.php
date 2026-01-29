@@ -441,6 +441,20 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
         $startDt = $nowUtc->sub(new DateInterval('P7D'));
     }
 
+    $firstAny = $db->fetchOne(
+        'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
+         FROM purchases
+         WHERE symbol = :sym',
+        [':sym' => $symbol]
+    );
+    if (is_array($firstAny) && ($firstAny['first_at'] ?? '') !== '') {
+        try {
+            $startDt = new DateTimeImmutable((string)$firstAny['first_at'] . ' UTC');
+        } catch (Throwable) {
+            // keep previous startDt
+        }
+    }
+
     $startMs = (int)($startDt->getTimestamp() * 1000);
     $endMs = (int)($nowUtc->getTimestamp() * 1000);
 
@@ -467,11 +481,12 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
         }
     }
 
-    $series = $bybit->klines($symbol, $interval, $startMs, $endMs, $limit);
+    $seriesEndMs = $endMs;
+    $series = $bybit->klines($symbol, $interval, $startMs, $seriesEndMs, $limit);
     if ($series === []) {
-        $fallbackStart = $endMs - (7 * 24 * 60 * 60 * 1000);
+        $fallbackStart = $seriesEndMs - (7 * 24 * 60 * 60 * 1000);
         if ($fallbackStart < $endMs) {
-            $series = $bybit->klines($symbol, $interval, $fallbackStart, $endMs, min(200, $limit));
+            $series = $bybit->klines($symbol, $interval, $fallbackStart, $seriesEndMs, min(200, $limit));
         }
     }
 
@@ -479,33 +494,44 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
     echo '<div class="muted">Precio ' . h($baseAsset) . ' vs tiempo</div>';
 
     if ($series === []) {
-        echo '<div class="muted" style="margin-top:8px">No hay datos de kline para ' . h($symbol) . '.</div></div>';
-        return;
+        echo '<div class="muted" style="margin-top:8px">No hay datos de kline para ' . h($symbol) . ' (usando compras para el rango).</div>';
     }
 
-    $prices = array_map(static fn(array $pt) => (float)$pt[1], $series);
-    $minY = min($prices);
-    $maxY = max($prices);
+    $minY = null;
+    $maxY = null;
 
+    $purchasesAxis = $db->fetchAll(
+        'SELECT buy_price, sell_price FROM purchases WHERE symbol = :sym AND buy_price IS NOT NULL',
+        [':sym' => $symbol]
+    );
     $purchasesSorted = $purchases;
     usort($purchasesSorted, static fn(array $a, array $b) => ((int)$b['id']) <=> ((int)$a['id']));
     if (!$hasOpenPurchases) {
         $purchasesSorted = [];
     }
 
-    foreach ($purchasesSorted as $p) {
+    foreach ($purchasesAxis as $p) {
         if ($p['buy_price'] !== null) {
-            $minY = min($minY, (float)$p['buy_price']);
-            $maxY = max($maxY, (float)$p['buy_price']);
+            $minY = $minY === null ? (float)$p['buy_price'] : min($minY, (float)$p['buy_price']);
+            $maxY = $maxY === null ? (float)$p['buy_price'] : max($maxY, (float)$p['buy_price']);
         }
         if ($p['sell_price'] !== null) {
-            $minY = min($minY, (float)$p['sell_price']);
-            $maxY = max($maxY, (float)$p['sell_price']);
+            $minY = $minY === null ? (float)$p['sell_price'] : min($minY, (float)$p['sell_price']);
+            $maxY = $maxY === null ? (float)$p['sell_price'] : max($maxY, (float)$p['sell_price']);
         }
     }
     if (!$hasOpenPurchases && $lastSold !== null && $lastSold['sell_price'] !== null) {
-        $minY = min($minY, (float)$lastSold['sell_price']);
-        $maxY = max($maxY, (float)$lastSold['sell_price']);
+        $minY = $minY === null ? (float)$lastSold['sell_price'] : min($minY, (float)$lastSold['sell_price']);
+        $maxY = $maxY === null ? (float)$lastSold['sell_price'] : max($maxY, (float)$lastSold['sell_price']);
+    }
+    if (($minY === null || $maxY === null) && $series !== []) {
+        $prices = array_map(static fn(array $pt) => (float)$pt[1], $series);
+        $minY = min($prices);
+        $maxY = max($prices);
+    }
+    if ($minY === null || $maxY === null) {
+        $minY = 0.0;
+        $maxY = 1.0;
     }
     $pad = max(1.0, ($maxY - $minY) * 0.06);
     $minY -= $pad;
@@ -547,15 +573,13 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
         }
     }
 
-    $x0 = (float)$series[0][0];
-    $x1 = (float)$series[count($series) - 1][0];
+    $x0 = $series !== [] ? (float)$series[0][0] : (float)$startMs;
+    $x1 = $series !== [] ? (float)$series[count($series) - 1][0] : (float)$endMs;
+    if ($nextBuyMs !== null) {
+        $x1 = max($x1, $nextBuyMs);
+    }
     if ($x1 <= $x0) {
         $x1 = $x0 + 1;
-    }
-
-    // Extend chart window to include next buy, even if we don't have price data for the future.
-    if ($nextBuyMs !== null && $nextBuyMs > $x1) {
-        $x1 = $nextBuyMs;
     }
 
     $sx = static function (float $ts) use ($x0, $x1, $pl, $innerW): float {
@@ -667,13 +691,10 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
         }
     }
     $chartId = 'chartjs-overlay';
-    $xMin = $x0;
-    $xMax = $x1;
-    if ($openStartMs !== null) {
-        $xMin = $openStartMs;
-    }
-    if ($nextBuyMs !== null) {
-        $xMax = $nextBuyMs;
+    $xMin = (float)$startMs;
+    $xMax = $nextBuyMs !== null ? $nextBuyMs : (float)$endMs;
+    if ($xMax <= $xMin) {
+        $xMax = $xMin + 1;
     }
     echo '<div style="margin-bottom:8px">';
     echo '<canvas id="' . h($chartId) . '" height="200"></canvas>';
