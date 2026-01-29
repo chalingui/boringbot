@@ -372,8 +372,8 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
     if ($limit < 50) {
         $limit = 50;
     }
-    if ($limit > 1000) {
-        $limit = 1000;
+    if ($limit > 200) {
+        $limit = 200;
     }
 
     $purchases = $db->fetchAll(
@@ -468,6 +468,12 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
     }
 
     $series = $bybit->klines($symbol, $interval, $startMs, $endMs, $limit);
+    if ($series === []) {
+        $fallbackStart = $endMs - (7 * 24 * 60 * 60 * 1000);
+        if ($fallbackStart < $endMs) {
+            $series = $bybit->klines($symbol, $interval, $fallbackStart, $endMs, min(200, $limit));
+        }
+    }
 
     echo '<div class="card">';
     echo '<div class="muted">Precio ' . h($baseAsset) . ' vs tiempo</div>';
