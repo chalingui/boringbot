@@ -861,7 +861,8 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
               const metrics = ctx.measureText(text);
               const textW = metrics.width;
               const textH = 12;
-              const x = pt.x - 6;
+              const chartRight = chart.chartArea ? chart.chartArea.right : pt.x;
+              const x = chartRight - 6;
               const y = pt.y;
               ctx.fillStyle = "rgba(11,16,32,0.8)";
               ctx.fillRect(x - textW - pad, y - textH / 2 - pad, textW + pad * 2, textH + pad * 2);
