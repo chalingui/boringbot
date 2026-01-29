@@ -411,17 +411,16 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
     $startDt = null;
     $primaryBuyMs = null;
     $primaryId = null;
-    $openLatest = $db->fetchOne(
-        'SELECT COALESCE(buy_filled_at, created_at) AS last_at
+    $openEarliest = $db->fetchOne(
+        'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
          FROM purchases
          WHERE symbol = :sym AND status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS")
-         ORDER BY id DESC
-         LIMIT 1',
+        ',
         [':sym' => $symbol]
     );
-    if (is_array($openLatest) && ($openLatest['last_at'] ?? '') !== '') {
+    if (is_array($openEarliest) && ($openEarliest['first_at'] ?? '') !== '') {
         try {
-            $startDt = new DateTimeImmutable((string)$openLatest['last_at'] . ' UTC');
+            $startDt = new DateTimeImmutable((string)$openEarliest['first_at'] . ' UTC');
         } catch (Throwable) {
             $startDt = null;
         }
@@ -445,16 +444,15 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
 
     if ($startDt === null) {
         $latestAny = $db->fetchOne(
-            'SELECT COALESCE(buy_filled_at, created_at) AS last_at
+            'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
              FROM purchases
              WHERE symbol = :sym
-             ORDER BY id DESC
-             LIMIT 1',
+            ',
             [':sym' => $symbol]
         );
-        if (is_array($latestAny) && ($latestAny['last_at'] ?? '') !== '') {
+        if (is_array($latestAny) && ($latestAny['first_at'] ?? '') !== '') {
             try {
-                $startDt = new DateTimeImmutable((string)$latestAny['last_at'] . ' UTC');
+                $startDt = new DateTimeImmutable((string)$latestAny['first_at'] . ' UTC');
             } catch (Throwable) {
                 $startDt = null;
             }
