@@ -411,15 +411,17 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
     $startDt = null;
     $primaryBuyMs = null;
     $primaryId = null;
-    $openStart = $db->fetchOne(
-        'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
+    $openLatest = $db->fetchOne(
+        'SELECT COALESCE(buy_filled_at, created_at) AS last_at
          FROM purchases
-         WHERE symbol = :sym AND status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") AND buy_price IS NOT NULL',
+         WHERE symbol = :sym AND status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS")
+         ORDER BY id DESC
+         LIMIT 1',
         [':sym' => $symbol]
     );
-    if (is_array($openStart) && ($openStart['first_at'] ?? '') !== '') {
+    if (is_array($openLatest) && ($openLatest['last_at'] ?? '') !== '') {
         try {
-            $startDt = new DateTimeImmutable((string)$openStart['first_at'] . ' UTC');
+            $startDt = new DateTimeImmutable((string)$openLatest['last_at'] . ' UTC');
         } catch (Throwable) {
             $startDt = null;
         }
@@ -441,17 +443,21 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
         $startDt = $nowUtc->sub(new DateInterval('P7D'));
     }
 
-    $firstAny = $db->fetchOne(
-        'SELECT MIN(COALESCE(buy_filled_at, created_at)) AS first_at
-         FROM purchases
-         WHERE symbol = :sym',
-        [':sym' => $symbol]
-    );
-    if (is_array($firstAny) && ($firstAny['first_at'] ?? '') !== '') {
-        try {
-            $startDt = new DateTimeImmutable((string)$firstAny['first_at'] . ' UTC');
-        } catch (Throwable) {
-            // keep previous startDt
+    if ($startDt === null) {
+        $latestAny = $db->fetchOne(
+            'SELECT COALESCE(buy_filled_at, created_at) AS last_at
+             FROM purchases
+             WHERE symbol = :sym
+             ORDER BY id DESC
+             LIMIT 1',
+            [':sym' => $symbol]
+        );
+        if (is_array($latestAny) && ($latestAny['last_at'] ?? '') !== '') {
+            try {
+                $startDt = new DateTimeImmutable((string)$latestAny['last_at'] . ' UTC');
+            } catch (Throwable) {
+                $startDt = null;
+            }
         }
     }
 
