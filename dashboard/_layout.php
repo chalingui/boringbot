@@ -86,8 +86,10 @@ function renderHeader(string $title): void
       .purchase-row.pcolor-3 .purchase-id{color:#f6c6d7}
       .purchase-row.pcolor-4 .purchase-id{color:#d9c7f7}
       .purchase-row.pcolor-5 .purchase-id{color:#ffd3b6}
-      .asset-badge{display:inline-flex;align-items:center;gap:8px;font-weight:700}
-      .asset-logo{width:22px;height:22px;display:inline-flex;border-radius:50%}
+      .asset-card{position:relative;overflow:hidden}
+      .asset-badge{display:flex;align-items:center;gap:8px;font-weight:700}
+      .asset-logo{width:28px;height:28px;border-radius:50%;box-shadow:0 6px 14px rgba(0,0,0,.25)}
+      .asset-logo.floating{position:absolute;top:-10px;right:-10px;width:40px;height:40px;opacity:.95}
       .summary-card{padding:10px 12px}
       .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
       @media (max-width:900px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

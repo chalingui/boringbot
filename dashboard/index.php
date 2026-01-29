@@ -1102,8 +1102,9 @@ foreach ($symbols as $symbol) {
         ? dashUrl('assets/btc.svg')
         : dashUrl('assets/eth.svg');
     $stats = $symbolStats[$symbol] ?? [];
-    echo '<div class="card col6">';
-    echo '<div class="asset-badge"><img class="asset-logo" src="' . h($logo) . '" alt="' . h($baseAsset) . '"><span>' . h($symbol) . '</span></div>';
+    echo '<div class="card col6 asset-card">';
+    echo '<img class="asset-logo floating" src="' . h($logo) . '" alt="' . h($baseAsset) . '">';
+    echo '<div class="asset-badge"><span>' . h($symbol) . '</span></div>';
     echo '<div class="kpi" style="margin-top:10px">';
     $baseBalance = $balanceMap[$baseAsset] ?? 0.0;
     echo '<div class="item"><div class="muted">Balance</div><div style="font-size:18px">' . h(number_format((float)$baseBalance, 8, '.', '')) . ' ' . h($baseAsset) . '</div></div>';
