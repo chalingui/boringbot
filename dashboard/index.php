@@ -664,7 +664,15 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
                 $chartBuyLines[] = ['id' => $id, 'price' => $buyPx, 'color' => $color, 'ms' => $buyMs];
             }
             if ($sellPx !== null && in_array($status, ['OPEN', 'HOLDING', 'NEEDS_FUNDS'], true)) {
-                $chartSellLines[] = ['id' => $id, 'price' => $sellPx, 'color' => $color, 'ms' => $buyMs];
+                $sellPxLabel = number_format($sellPx, 2, '.', '');
+                $chartSellLines[] = [
+                    'id' => $id,
+                    'price' => $sellPx,
+                    'color' => $color,
+                    'ms' => $buyMs,
+                    'labelText' => 'Venta #' . $id . ' @ ' . $sellPxLabel,
+                    'labelMs' => $buyMs,
+                ];
                 $chartOpenLines[] = ['id' => $id, 'color' => $color];
             }
         }
