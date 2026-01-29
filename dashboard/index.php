@@ -1027,6 +1027,10 @@ if (($lastDcaAt !== null && $lastDcaAt !== '') || (is_array($latest) && isset($l
 }
 
 $symbols = tradeSymbols($cfg);
+$balanceMap = [];
+foreach ($balances as $b) {
+    $balanceMap[(string)$b['asset']] = (float)$b['amount'];
+}
 $bybitHome = new BybitClient(
     (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
     '',
@@ -1073,26 +1077,22 @@ foreach ($symbols as $symbol) {
     ];
 }
 echo '<div class="grid">';
-echo '<div class="card col3"><div class="muted">Balances (ledger)</div><div class="kpi stack">';
-foreach ($balances as $b) {
-    if ((string)$b['asset'] === 'USDC') {
-        continue;
-    }
-    echo '<div class="item"><div class="muted">' . h((string)$b['asset']) . '</div><div style="font-size:18px">' . h(number_format((float)$b['amount'], 8, '.', '')) . '</div></div>';
-}
+echo '<div class="card col3"><div class="muted">Ledger USDT</div><div class="kpi stack">';
+$usdtBalance = $balanceMap['USDT'] ?? 0.0;
+echo '<div class="item"><div class="muted">USDT</div><div style="font-size:18px">' . h(number_format((float)$usdtBalance, 8, '.', '')) . '</div></div>';
 echo '<div class="item profit"><div class="muted">Profit</div><div style="font-size:18px">' . h(number_format((float)($profit['p'] ?? 0.0), 8, '.', '')) . '</div></div>';
 echo '</div></div>';
 
-echo '<div class="card col9"><div class="muted">Resumen</div>';
-echo '<div class="kpi">';
-echo '<div class="item"><div class="muted">Activas</div><div style="font-size:18px">' . h((string)($open['c'] ?? '0')) . '</div></div>';
-echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:18px">' . h((string)($sold['c'] ?? '0')) . '</div></div>';
-echo '<div class="item"><div class="muted">Trade symbols</div><div style="font-size:18px">' . h(implode(', ', $symbols)) . '</div></div>';
-echo '<div class="item"><div class="muted">DCA</div><div style="font-size:18px">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
-echo '<div class="item"><div class="muted">Sell markup</div><div style="font-size:18px">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
-echo '<div class="item"><div class="muted">Última compra</div><div style="font-size:18px">' . h($lastBuyLocal ?? '—') . '</div><div class="muted" style="margin-top:2px">' . h($lastBuyAgo ?? 'n/a') . '</div></div>';
-echo '<div class="item"><div class="muted">Próxima compra</div><div style="font-size:18px">' . h($nextBuyLocal ?? '—') . '</div><div class="muted" style="margin-top:2px">' . h($nextBuyIn ?? 'n/a') . '</div></div>';
-echo '<div class="item"><div class="muted">Última actualización</div><div style="font-size:18px">' . h(ago($lastAny)) . '</div><div class="muted" style="margin-top:2px">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
+echo '<div class="card col9 summary-card"><div class="muted">Resumen</div>';
+echo '<div class="summary-grid">';
+echo '<div class="summary-item"><div class="summary-label">Activas</div><div class="summary-value">' . h((string)($open['c'] ?? '0')) . '</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Vendidas</div><div class="summary-value">' . h((string)($sold['c'] ?? '0')) . '</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Symbols</div><div class="summary-value">' . h(implode(', ', $symbols)) . '</div></div>';
+echo '<div class="summary-item"><div class="summary-label">DCA</div><div class="summary-value">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Sell markup</div><div class="summary-value">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Última compra</div><div class="summary-value">' . h($lastBuyLocal ?? '—') . '</div><div class="muted" style="font-size:11px">' . h($lastBuyAgo ?? 'n/a') . '</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Próxima compra</div><div class="summary-value">' . h($nextBuyLocal ?? '—') . '</div><div class="muted" style="font-size:11px">' . h($nextBuyIn ?? 'n/a') . '</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Última actualización</div><div class="summary-value">' . h(ago($lastAny)) . '</div><div class="muted" style="font-size:11px">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
 echo '</div>';
 echo '</div>';
 
@@ -1105,6 +1105,8 @@ foreach ($symbols as $symbol) {
     echo '<div class="card col6">';
     echo '<div class="asset-badge"><img class="asset-logo" src="' . h($logo) . '" alt="' . h($baseAsset) . '"><span>' . h($symbol) . '</span></div>';
     echo '<div class="kpi" style="margin-top:10px">';
+    $baseBalance = $balanceMap[$baseAsset] ?? 0.0;
+    echo '<div class="item"><div class="muted">Balance</div><div style="font-size:18px">' . h(number_format((float)$baseBalance, 8, '.', '')) . ' ' . h($baseAsset) . '</div></div>';
     echo '<div class="item"><div class="muted">Activas</div><div style="font-size:18px">' . h((string)($stats['open'] ?? '0')) . '</div></div>';
     echo '<div class="item"><div class="muted">Vendidas</div><div style="font-size:18px">' . h((string)($stats['sold'] ?? '0')) . '</div></div>';
     $lastPx = $stats['last_price'] ?? null;

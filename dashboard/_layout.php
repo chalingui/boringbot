@@ -88,6 +88,13 @@ function renderHeader(string $title): void
       .purchase-row.pcolor-5 .purchase-id{color:#ffd3b6}
       .asset-badge{display:inline-flex;align-items:center;gap:8px;font-weight:700}
       .asset-logo{width:22px;height:22px;display:inline-flex;border-radius:50%}
+      .summary-card{padding:10px 12px}
+      .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      @media (max-width:900px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media (max-width:600px){.summary-grid{grid-template-columns:1fr}}
+      .summary-item{display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}
+      .summary-label{font-size:11px;color:var(--muted);letter-spacing:.02em;text-transform:uppercase}
+      .summary-value{font-size:16px;font-weight:600}
     </style></head><body><div class="wrap">';
     echo '<div class="top"><div class="brand"><a href="' . h(dashUrl()) . '" aria-label="Dashboard home" style="display:inline-flex"><img src="' . h(dashUrl('assets/boringbot-logo.svg')) . '" alt="boringbot"></a><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';
