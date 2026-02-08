@@ -141,6 +141,35 @@ function ago(?string $atom): string
     }
 }
 
+function fmtHoraEs(DateTimeImmutable $dt): string
+{
+    $hour = (int)$dt->format('G');
+    $minute = (int)$dt->format('i');
+    if ($minute === 0) {
+        return $hour . 'hs';
+    }
+    return sprintf('%d:%02dhs', $hour, $minute);
+}
+
+function fmtProximaCompraHumana(?DateTimeImmutable $localDue): string
+{
+    if ($localDue === null) {
+        return '—';
+    }
+    $time = fmtHoraEs($localDue);
+    $today = new DateTimeImmutable('today', $localDue->getTimezone());
+    $tomorrow = $today->add(new DateInterval('P1D'));
+    $dueDate = $localDue->format('Y-m-d');
+    if ($dueDate === $today->format('Y-m-d')) {
+        return 'hoy a las ' . $time;
+    }
+    if ($dueDate === $tomorrow->format('Y-m-d')) {
+        return 'mañana a las ' . $time;
+    }
+    $dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    return 'el ' . $dayNames[(int)$localDue->format('w')] . ' a las ' . $time;
+}
+
 function v($x): string
 {
     if ($x === null) {
@@ -1024,6 +1053,7 @@ if (is_string($lastRecon) && $lastRecon !== '') {
 
 $nextBuyLocal = null;
 $nextBuyIn = null;
+$nextBuyHuman = null;
 $lastDcaRow = $db->fetchOne('SELECT v FROM meta WHERE k = "last_dca_at"');
 $latest = $db->fetchOne('SELECT created_at FROM purchases ORDER BY id DESC LIMIT 1');
 $lastBuy = null;
@@ -1053,7 +1083,9 @@ if (($lastDcaAt !== null && $lastDcaAt !== '') || (is_array($latest) && isset($l
                 $offset = new DateInterval('PT' . abs($offsetHours) . 'H');
                 $dueAt = $offsetHours > 0 ? $dueAt->add($offset) : $dueAt->sub($offset);
             }
-            $nextBuyLocal = $dueAt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i');
+            $dueAtLocal = $dueAt->setTimezone(new DateTimeZone(date_default_timezone_get()));
+            $nextBuyLocal = $dueAtLocal->format('Y-m-d H:i');
+            $nextBuyHuman = fmtProximaCompraHumana($dueAtLocal);
             $nowUtc = new DateTimeImmutable('now', new DateTimeZone('UTC'));
             $secondsUntil = $dueAt->getTimestamp() - $nowUtc->getTimestamp();
             if ($secondsUntil < 0) {
@@ -1063,6 +1095,7 @@ if (($lastDcaAt !== null && $lastDcaAt !== '') || (is_array($latest) && isset($l
         } catch (Throwable) {
             $nextBuyLocal = null;
             $nextBuyIn = null;
+            $nextBuyHuman = null;
         }
     }
 }
@@ -1131,9 +1164,9 @@ echo '<div class="summary-item"><div class="summary-label">Vendidas</div><div cl
 echo '<div class="summary-item"><div class="summary-label">Symbols</div><div class="summary-value">' . h(implode(', ', $symbols)) . '</div></div>';
 echo '<div class="summary-item"><div class="summary-label">DCA</div><div class="summary-value">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
 echo '<div class="summary-item"><div class="summary-label">Sell markup</div><div class="summary-value">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
-echo '<div class="summary-item"><div class="summary-label">Última compra</div><div class="summary-value">' . h($lastBuyLocal ?? '—') . '</div><div class="muted" style="font-size:11px">' . h($lastBuyAgo ?? 'n/a') . '</div></div>';
-echo '<div class="summary-item"><div class="summary-label">Próxima compra</div><div class="summary-value">' . h($nextBuyLocal ?? '—') . '</div><div class="muted" style="font-size:11px">' . h($nextBuyIn ?? 'n/a') . '</div></div>';
-echo '<div class="summary-item"><div class="summary-label">Última actualización</div><div class="summary-value">' . h(ago($lastAny)) . '</div><div class="muted" style="font-size:11px">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Última compra</div><div class="summary-value">' . h($lastBuyLocal ?? '—') . '</div><div class="summary-meta">' . h($lastBuyAgo ?? 'n/a') . '</div></div>';
+echo '<div class="summary-item summary-item-highlight"><div class="summary-label">Próxima compra</div><div class="summary-value">' . h($nextBuyHuman ?? $nextBuyLocal ?? '—') . '</div><div class="summary-meta">' . h($nextBuyIn ?? 'n/a') . '</div></div>';
+echo '<div class="summary-item"><div class="summary-label">Última actualización</div><div class="summary-value">' . h(ago($lastAny)) . '</div><div class="summary-meta">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
 echo '</div>';
 echo '</div>';
 

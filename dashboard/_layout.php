@@ -94,9 +94,11 @@ function renderHeader(string $title): void
       .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
       @media (max-width:900px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media (max-width:600px){.summary-grid{grid-template-columns:1fr}}
-      .summary-item{display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}
+      .summary-item{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015))}
+      .summary-item-highlight{border-color:rgba(110,168,255,.45);box-shadow:inset 0 0 0 1px rgba(110,168,255,.12)}
       .summary-label{font-size:11px;color:var(--muted);letter-spacing:.02em;text-transform:uppercase}
-      .summary-value{font-size:16px;font-weight:600}
+      .summary-value{font-size:16px;font-weight:600;line-height:1.25;word-break:break-word}
+      .summary-meta{font-size:11px;color:var(--muted)}
     </style></head><body><div class="wrap">';
     echo '<div class="top"><div class="brand"><a href="' . h(dashUrl()) . '" aria-label="Dashboard home" style="display:inline-flex"><img src="' . h(dashUrl('assets/boringbot-logo.svg')) . '" alt="boringbot"></a><div><div class="muted">boringbot</div><h1 style="margin:2px 0 0;font-size:18px">' . h($title) . '</h1></div></div>';
     echo '<div class="nav">';
