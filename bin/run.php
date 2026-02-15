@@ -115,12 +115,33 @@ try {
         $dryRun,
     );
 
+    $eventsBeforeRun = (int)(($db->fetchOne('SELECT COALESCE(MAX(id), 0) AS id FROM events_log') ?? [])['id'] ?? 0);
+
     $bot = new DcaBot($db, $purchases, $logger);
     $code = $bot->run();
 
-    // Reconcile base assets after order processing (fills/buys/sells may have changed balances).
-    $reconciler->reconcileEth();
-    $reconciler->reconcileBtc();
+    // Reconcile base assets only after buy/sell fills in this run.
+    $assetActivity = $db->fetchOne(
+        'SELECT COUNT(1) AS c
+         FROM events_log
+         WHERE id > :id
+           AND (
+             type = :sold
+             OR type = :buy_ok
+             OR type = :buy_fail
+           )',
+        [
+            ':id' => $eventsBeforeRun,
+            ':sold' => 'SOLD',
+            ':buy_ok' => 'BUY_FILLED_SELL_PLACED',
+            ':buy_fail' => 'BUY_FILLED_SELL_FAILED',
+        ]
+    );
+    $hasAssetActivity = ((int)($assetActivity['c'] ?? 0)) > 0;
+    if ($hasAssetActivity) {
+        $reconciler->reconcileEth();
+        $reconciler->reconcileBtc();
+    }
 
     $endedAt = new DateTimeImmutable('now', new DateTimeZone('UTC'));
     setMeta($db, 'last_run_finished_at', $endedAt->format(DATE_ATOM));
