@@ -26,7 +26,8 @@ Configurar en `.env` (no commitear credenciales):
 - `NOTIFY_ENABLED=1`
 - `NOTIFY_EMAIL_TO=tu@email.com`
 - `NOTIFY_EMAIL_FROM=postmaster@tu-dominio.com` (o el usuario SMTP)
-- `NOTIFY_NO_FUNDS_LEAD_HOURS=48` (aviso si falta USDT dentro de esa ventana antes del próximo DCA)
+- `NOTIFY_NO_FUNDS_LEAD_HOURS=24` (aviso si falta USDT dentro de esa ventana antes del próximo DCA)
+- `NOTIFY_COOLDOWN_MINUTES=60` (máximo 1 aviso por hora)
 - `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_ENCRYPTION` (`starttls`), `SMTP_USER`, `SMTP_PASS`
 
 Test manual:
@@ -39,7 +40,7 @@ Eventos notificados:
 - Compra creada (cuando se coloca la orden de compra real)
 - Venta ejecutada (cuando se completa la venta y se registra el profit)
 - Sin USDT suficiente para comprar (con cooldown `NOTIFY_COOLDOWN_MINUTES`)
-- Sin USDT suficiente para el próximo DCA (aviso “anticipado” dentro de `NOTIFY_NO_FUNDS_LEAD_HOURS`)
+- Sin USDT suficiente para el próximo DCA (aviso “anticipado” dentro de `NOTIFY_NO_FUNDS_LEAD_HOURS`, con frecuencia limitada por `NOTIFY_COOLDOWN_MINUTES`)
 
 3) Crea carpetas si hace falta (logs/lock/db se crean solos, pero recomendado):
 ```bash
@@ -49,7 +50,7 @@ mkdir -p db logs storage
 ## Importante: “balances” (libro contable del bot)
 `balances` **NO** es el balance real del exchange. Representa los fondos autorizados para operar con el bot.
 
-Depósitos de USDT se reflejan con reconciliación explícita:
+Depósitos de USDT se reflejan con reconciliación (automática en `bin/run.php` y también manual si querés):
 ```bash
 php bin/reconcile.php
 php bin/reconcile.php --dry-run
@@ -59,9 +60,10 @@ php bin/reconcile.php --dry-run
 - Registra log y evento `RECONCILE` en `events_log`.
 
 ## Ejecución (cron)
-Corre cada 5 minutos:
+Cron único (órdenes + reconciliación de balances + avisos de fondos).  
+Corre cada 10 minutos:
 ```cron
-*/5 * * * * cd /path/to/boringbot && php bin/run.php >> logs/cron.log 2>&1
+*/10 * * * * cd /path/to/boringbot && php bin/run.php >> logs/cron.log 2>&1
 ```
 
 Incluye lock anti doble ejecución en `storage/boringbot.lock`.

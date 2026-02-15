@@ -4,6 +4,7 @@ declare(strict_types=1);
 use BoringBot\Bot\DcaBot;
 use BoringBot\Bot\Notifier;
 use BoringBot\Bot\PurchaseManager;
+use BoringBot\Bot\Reconciler;
 use BoringBot\DB\Database;
 use BoringBot\Exchange\BybitClient;
 use BoringBot\Utils\Config;
@@ -65,6 +66,10 @@ try {
         (string)($cfg['bybit']['account_type'] ?? 'SPOT'),
     );
 
+    $reconciler = new Reconciler($db, $bybit, $logger, $dryRun);
+    // Keep USDT ledger in sync before deciding if new DCA purchases are affordable.
+    $reconciler->reconcileUsdt();
+
     $notifier = null;
     if (($cfg['notify']['enabled'] ?? false) === true) {
         $mailer = new Mailer(
@@ -84,7 +89,7 @@ try {
             (bool)($cfg['notify']['enabled'] ?? false),
             (string)($cfg['notify']['email_to'] ?? ''),
             (string)($cfg['notify']['email_from'] ?? ''),
-            (int)($cfg['notify']['cooldown_minutes'] ?? 720),
+            (int)($cfg['notify']['cooldown_minutes'] ?? 60),
         );
     }
 
@@ -112,6 +117,10 @@ try {
 
     $bot = new DcaBot($db, $purchases, $logger);
     $code = $bot->run();
+
+    // Reconcile base assets after order processing (fills/buys/sells may have changed balances).
+    $reconciler->reconcileEth();
+    $reconciler->reconcileBtc();
 
     $endedAt = new DateTimeImmutable('now', new DateTimeZone('UTC'));
     setMeta($db, 'last_run_finished_at', $endedAt->format(DATE_ATOM));

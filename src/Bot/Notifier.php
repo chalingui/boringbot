@@ -74,28 +74,19 @@ final class Notifier
     {
         $key = 'no_funds_lead';
 
-        $dueAtUtc = $dueAtUtc->setTimezone(new DateTimeZone('UTC'));
-        $dueMarker = $dueAtUtc->format(DATE_ATOM);
-        $lastDueMarker = $this->getMeta('notify_no_funds_lead_due_at');
-        if (is_string($lastDueMarker) && $lastDueMarker !== '' && $lastDueMarker === $dueMarker) {
-            return;
-        }
-
         if (!$this->shouldSendCooldown($key)) {
             return;
         }
 
+        $dueAtUtc = $dueAtUtc->setTimezone(new DateTimeZone('UTC'));
         $localTz = new DateTimeZone(date_default_timezone_get());
         $dueAtLocal = $dueAtUtc->setTimezone($localTz)->format('Y-m-d H:i:s');
 
-        $ok = $this->sendEvent(
+        $this->sendEvent(
             key: $key,
             subject: "[boringbot] Falta USDT para la próxima compra (en {$leadHours}h)",
             body: "La próxima compra está programada dentro de {$leadHours}h.\nVencimiento (hora local): {$dueAtLocal}\nNecesita: " . $this->fmtMoney($needUsdt) . " USDT\nDisponible (ledger): " . $this->fmtMoney($haveUsdt) . " USDT\n"
         );
-        if ($ok) {
-            $this->setMeta('notify_no_funds_lead_due_at', $dueMarker);
-        }
     }
 
     private function sendEvent(string $key, string $subject, string $body): bool

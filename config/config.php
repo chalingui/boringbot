@@ -31,9 +31,9 @@ return [
         'enabled' => (getenv('NOTIFY_ENABLED') ?: '0') === '1',
         'email_to' => getenv('NOTIFY_EMAIL_TO') ?: '',
         'email_from' => getenv('NOTIFY_EMAIL_FROM') ?: (getenv('SMTP_USER') ?: ''),
-        'cooldown_minutes' => (int)(getenv('NOTIFY_COOLDOWN_MINUTES') ?: 720),
+        'cooldown_minutes' => (int)(getenv('NOTIFY_COOLDOWN_MINUTES') ?: 60),
         // Sends a reminder when the next DCA is within this window and there are not enough funds.
-        'no_funds_lead_hours' => (int)(getenv('NOTIFY_NO_FUNDS_LEAD_HOURS') ?: 48),
+        'no_funds_lead_hours' => (int)(getenv('NOTIFY_NO_FUNDS_LEAD_HOURS') ?: 24),
         'smtp' => [
             'host' => getenv('SMTP_HOST') ?: '',
             'port' => (int)(getenv('SMTP_PORT') ?: 587),
