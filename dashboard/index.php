@@ -258,7 +258,7 @@ function renderPurchasesTable(array $rows, array $lastPrices, string $priceFetch
         }
 
         echo '<tr id="p' . h((string)$id) . '" class="purchase-row ' . h($colorClass) . '">';
-        echo '<td><a class="purchase-id" href="' . h(dashUrl('?view=purchases')) . '#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
+        echo '<td><a class="purchase-id" href="#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td>' . h($symbol) . '</td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
         echo '<td>' . h(fmtDbDt((string)$p['created_at'])) . '<br><span class="muted">' . h(agoDbDt((string)$p['created_at'])) . '</span></td>';
@@ -976,39 +976,6 @@ function fmtDurationSeconds(int $seconds): string
     return $seconds . 's';
 }
 
-if ($view === 'purchases') {
-    $bybit = new BybitClient(
-        (string)($cfg['bybit']['base_url'] ?? 'https://api.bybit.com'),
-        '',
-        '',
-    );
-    $symbols = tradeSymbols($cfg);
-    $lastPrices = lastPricesForSymbols($bybit, $symbols);
-    $priceFetchedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
-
-    $showClosed = isset($_GET['show_closed']) && $_GET['show_closed'] === '1';
-    echo '<div class="card" style="margin-bottom:10px">';
-    echo '<form method="get" action="' . h(dashUrl()) . '" style="display:flex;align-items:center;gap:8px">';
-    echo '<input type="hidden" name="view" value="purchases">';
-    echo '<label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">';
-    echo '<input type="checkbox" name="show_closed" value="1"' . ($showClosed ? ' checked' : '') . '>';
-    echo 'Mostrar cerradas';
-    echo '</label>';
-    echo '<button type="submit" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--nav-bg);color:var(--text);cursor:pointer">Aplicar</button>';
-    echo '</form>';
-    echo '</div>';
-
-    if ($showClosed) {
-        $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
-    } else {
-        $rows = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") ORDER BY id DESC LIMIT 200');
-    }
-    renderPurchasesTable($rows, $lastPrices, $priceFetchedAt);
-    echo '<div class="muted" style="margin-top:8px">Nota: la compra pasa de BUYING→OPEN cuando el cron detecta el fill y coloca la LIMIT SELL.</div>';
-    renderFooter();
-    exit;
-}
-
 if ($view === 'moves') {
     renderMovementsTable($db, 300);
     renderFooter();
@@ -1213,7 +1180,21 @@ foreach ($symbols as $symbol) {
 
 // Purchases box on home (same as Purchases view, limited rows).
 $priceFetchedAtHome = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
-$rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
+$showClosedHome = isset($_GET['show_closed']) && $_GET['show_closed'] === '1';
+echo '<div class="card" style="margin-bottom:10px">';
+echo '<form method="get" action="' . h(dashUrl()) . '" style="display:flex;align-items:center;gap:8px">';
+echo '<label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">';
+echo '<input type="checkbox" name="show_closed" value="1"' . ($showClosedHome ? ' checked' : '') . '>';
+echo 'Mostrar cerradas';
+echo '</label>';
+echo '<button type="submit" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--nav-bg);color:var(--text);cursor:pointer">Aplicar</button>';
+echo '</form>';
+echo '</div>';
+if ($showClosedHome) {
+    $rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
+} else {
+    $rowsHome = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") ORDER BY id DESC LIMIT 50');
+}
 renderPurchasesTable($rowsHome, $lastPricesHome, $priceFetchedAtHome);
 echo '</div>';
 
