@@ -257,7 +257,14 @@ function renderPurchasesTable(array $rows, array $lastPrices, string $priceFetch
             }
         }
 
-        echo '<tr id="p' . h((string)$id) . '" class="purchase-row ' . h($colorClass) . '">';
+        $rowClasses = ['purchase-row'];
+        if ($colorClass !== '') {
+            $rowClasses[] = $colorClass;
+        }
+        if ($status === 'SOLD') {
+            $rowClasses[] = 'is-closed';
+        }
+        echo '<tr id="p' . h((string)$id) . '" class="' . h(implode(' ', $rowClasses)) . '">';
         echo '<td><a class="purchase-id" href="#p' . h((string)$id) . '">#' . h((string)$id) . '</a></td>';
         echo '<td>' . h($symbol) . '</td>';
         echo '<td><span class="pill ' . h($status) . '">' . h($status) . '</span></td>';
@@ -1180,22 +1187,32 @@ foreach ($symbols as $symbol) {
 
 // Purchases box on home (same as Purchases view, limited rows).
 $priceFetchedAtHome = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
-$showClosedHome = isset($_GET['show_closed']) && $_GET['show_closed'] === '1';
 echo '<div class="card" style="margin-bottom:10px">';
-echo '<form method="get" action="' . h(dashUrl()) . '" style="display:flex;align-items:center;gap:8px">';
+echo '<div style="display:flex;align-items:center;gap:8px">';
 echo '<label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">';
-echo '<input type="checkbox" name="show_closed" value="1"' . ($showClosedHome ? ' checked' : '') . '>';
+echo '<input type="checkbox" id="show-closed-toggle">';
 echo 'Mostrar cerradas';
 echo '</label>';
-echo '<button type="submit" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--nav-bg);color:var(--text);cursor:pointer">Aplicar</button>';
-echo '</form>';
 echo '</div>';
-if ($showClosedHome) {
-    $rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
-} else {
-    $rowsHome = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") ORDER BY id DESC LIMIT 50');
-}
+echo '</div>';
+$rowsHome = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 50');
 renderPurchasesTable($rowsHome, $lastPricesHome, $priceFetchedAtHome);
+echo '<script>
+(function () {
+    var toggle = document.getElementById("show-closed-toggle");
+    if (!toggle) {
+        return;
+    }
+    var rows = document.querySelectorAll("tr.is-closed");
+    var apply = function () {
+        rows.forEach(function (row) {
+            row.style.display = toggle.checked ? "" : "none";
+        });
+    };
+    toggle.addEventListener("change", apply);
+    apply();
+})();
+</script>';
 echo '</div>';
 
 renderFooter();
