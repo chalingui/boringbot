@@ -986,7 +986,23 @@ if ($view === 'purchases') {
     $lastPrices = lastPricesForSymbols($bybit, $symbols);
     $priceFetchedAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
-    $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
+    $showClosed = isset($_GET['show_closed']) && $_GET['show_closed'] === '1';
+    echo '<div class="card" style="margin-bottom:10px">';
+    echo '<form method="get" action="' . h(dashUrl()) . '" style="display:flex;align-items:center;gap:8px">';
+    echo '<input type="hidden" name="view" value="purchases">';
+    echo '<label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">';
+    echo '<input type="checkbox" name="show_closed" value="1"' . ($showClosed ? ' checked' : '') . '>';
+    echo 'Mostrar cerradas';
+    echo '</label>';
+    echo '<button type="submit" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--nav-bg);color:var(--text);cursor:pointer">Aplicar</button>';
+    echo '</form>';
+    echo '</div>';
+
+    if ($showClosed) {
+        $rows = $db->fetchAll('SELECT * FROM purchases ORDER BY id DESC LIMIT 200');
+    } else {
+        $rows = $db->fetchAll('SELECT * FROM purchases WHERE status IN ("BUYING","HOLDING","OPEN","NEEDS_FUNDS") ORDER BY id DESC LIMIT 200');
+    }
     renderPurchasesTable($rows, $lastPrices, $priceFetchedAt);
     echo '<div class="muted" style="margin-top:8px">Nota: la compra pasa de BUYING→OPEN cuando el cron detecta el fill y coloca la LIMIT SELL.</div>';
     renderFooter();
