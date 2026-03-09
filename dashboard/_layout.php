@@ -77,6 +77,21 @@ function renderHeader(string $title): void
       .pill.ERROR{border-color:rgba(255,107,107,.4);color:var(--bad)}
       .bar{height:10px;background:var(--bar-bg);border:1px solid var(--line);border-radius:999px;overflow:hidden}
       .bar > span{display:block;height:100%;background:linear-gradient(90deg,#6ea8ff,#41d18b);width:0%}
+      .progress-cell{min-width:150px}
+      .progress-cell .progress-label{margin-top:2px;font-weight:600}
+      .progress-cell .progress-meta{margin-top:2px;font-size:11px}
+      .progress-cell.progress-below .bar > span{background:linear-gradient(90deg,#ff9b6b,#ff6b6b)}
+      .progress-cell.progress-below .progress-label{color:var(--bad)}
+      .progress-cell.progress-below .progress-meta{color:var(--bad)}
+      .progress-cell.progress-mid .bar > span{background:linear-gradient(90deg,#6ea8ff,#41d18b)}
+      .progress-cell.progress-mid .progress-label{color:var(--text)}
+      .progress-cell.progress-mid .progress-meta{color:var(--muted)}
+      .progress-cell.progress-ready .bar > span,
+      .progress-cell.progress-sold .bar > span{background:linear-gradient(90deg,#41d18b,#9cffc9)}
+      .progress-cell.progress-ready .progress-label,
+      .progress-cell.progress-ready .progress-meta,
+      .progress-cell.progress-sold .progress-label,
+      .progress-cell.progress-sold .progress-meta{color:var(--ok)}
       .purchase-row td:first-child{border-left:3px solid transparent}
       .purchase-row.pcolor-0 td:first-child{border-left-color:#f4b6b2}
       .purchase-row.pcolor-1 td:first-child{border-left-color:#bde5b8}

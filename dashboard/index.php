@@ -295,8 +295,14 @@ function renderPurchasesTable(array $rows, array $lastPrices, string $priceFetch
         $buyPx = $p['buy_price'] !== null ? (float)$p['buy_price'] : null;
         $sellPx = $p['sell_price'] !== null ? (float)$p['sell_price'] : null;
         $progress = null;
+        $progressLabel = '—';
+        $progressMeta = null;
+        $progressClass = 'progress-mid';
         if ($status === 'SOLD') {
             $progress = 1.0;
+            $progressLabel = '100%';
+            $progressMeta = 'vendido';
+            $progressClass = 'progress-sold';
         } elseif ($lastPrice !== null && $buyPx !== null && $sellPx !== null && $sellPx > $buyPx) {
             $progress = ($lastPrice - $buyPx) / ($sellPx - $buyPx);
             if ($progress < 0) {
@@ -304,12 +310,34 @@ function renderPurchasesTable(array $rows, array $lastPrices, string $priceFetch
             } elseif ($progress > 1) {
                 $progress = 1.0;
             }
+
+            if ($lastPrice >= $sellPx) {
+                $progressLabel = '0% restante';
+                $progressMeta = 'lista para vender';
+                $progressClass = 'progress-ready';
+            } elseif ($lastPrice > 0) {
+                $remainingPct = (($sellPx / $lastPrice) - 1.0) * 100.0;
+                $progressLabel = 'faltan +' . number_format($remainingPct, 2, '.', '') . '%';
+                if ($lastPrice < $buyPx) {
+                    $belowBuyPct = (($buyPx / $lastPrice) - 1.0) * 100.0;
+                    $progressMeta = '-' . number_format($belowBuyPct, 2, '.', '') . '% vs compra';
+                    $progressClass = 'progress-below';
+                } else {
+                    $pct = (int)round($progress * 100);
+                    $progressMeta = $pct . '% del recorrido';
+                    $progressClass = 'progress-mid';
+                }
+            }
         }
         if ($progress === null) {
             echo '<td>—</td>';
         } else {
             $pct = (int)round($progress * 100);
-            echo '<td><div class="bar" title="' . h((string)$pct) . '%"><span style="width:' . h((string)$pct) . '%"></span></div><div class="muted" style="margin-top:2px">' . h((string)$pct) . '%</div></td>';
+            echo '<td class="progress-cell ' . h($progressClass) . '"><div class="bar" title="' . h((string)$pct) . '%"><span style="width:' . h((string)$pct) . '%"></span></div><div class="progress-label">' . h($progressLabel) . '</div>';
+            if ($progressMeta !== null) {
+                echo '<div class="progress-meta">' . h($progressMeta) . '</div>';
+            }
+            echo '</td>';
         }
 
         $profitUsdt = $p['profit_usdt'] !== null ? (float)$p['profit_usdt'] : null;
