@@ -48,17 +48,17 @@ final class Reconciler
             'asset' => $asset,
             'bybit' => number_format($bybit, 8, '.', ''),
             'bot' => number_format($bot, 8, '.', ''),
-            'delta' => number_format(max(0.0, $delta), 8, '.', ''),
+            'delta' => number_format($delta, 8, '.', ''),
             'dry_run' => $this->dryRun,
         ]);
 
-        if ($delta <= 0) {
+        if (abs($delta) < 1e-9) {
             $this->insertEvent('RECONCILE', [
                 'asset' => $asset,
                 'bybit_' . $key => number_format($bybit, 8, '.', ''),
                 'bot_' . $key => number_format($bot, 8, '.', ''),
                 'delta' => 0,
-                'note' => 'No positive delta; no update.',
+                'note' => 'Already in sync; no update.',
                 'dry_run' => $this->dryRun,
             ]);
             return;
@@ -70,7 +70,8 @@ final class Reconciler
                 'bybit_' . $key => number_format($bybit, 8, '.', ''),
                 'bot_' . $key => number_format($bot, 8, '.', ''),
                 'delta' => number_format($delta, 8, '.', ''),
-                'note' => 'Dry-run; would increase balances.' . $asset . '.',
+                'new_bot_' . $key => number_format($bybit, 8, '.', ''),
+                'note' => 'Dry-run; would sync ledger to Bybit balance.',
                 'dry_run' => true,
             ]);
             return;
