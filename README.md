@@ -17,6 +17,7 @@ cp config/.env.example .env
 - `BYBIT_API_KEY`
 - `BYBIT_API_SECRET`
 - `BYBIT_ACCOUNT_TYPE` (recomendado `UNIFIED`)
+- Opcional: `BUY_ENABLED=0` para pausar compras nuevas sin frenar ventas/reconciliación
 - Opcional: `SELL_MARKUP_PCT`, `DCA_AMOUNT_USDT`, `DCA_INTERVAL_DAYS`
 - Opcional: `SYMBOL_TRADE_ETH` (default `ETHUSDT`)
 - Opcional: `SYMBOL_TRADE_BTC` (default `BTCUSDT`)
@@ -87,6 +88,7 @@ Muestra:
 
 ## Lógica de estrategia
 - Cada `DCA_INTERVAL_DAYS` compra `DCA_AMOUNT_USDT` de `ETHUSDT` y `BTCUSDT` (market buy por monto en USDT).
+- Si `BUY_ENABLED=0`, no crea compras nuevas, pero sigue gestionando compras/ventas existentes.
 - Al completarse la compra: crea una orden `LIMIT SELL` al `+SELL_MARKUP_PCT`.
 - Al completarse la venta:
   - `100 USDT` vuelven a `balances.USDT` (capital_pool).

@@ -27,6 +27,7 @@ final class Config
                 'trade_btc' => getenv('SYMBOL_TRADE_BTC') ?: 'BTCUSDT',
             ],
             'strategy' => [
+                'buy_enabled' => self::envBool('BUY_ENABLED', true),
                 'dca_amount_usdt' => (float)(getenv('DCA_AMOUNT_USDT') ?: 100),
                 'dca_interval_days' => (int)(getenv('DCA_INTERVAL_DAYS') ?: 7),
                 'sell_markup_pct' => (float)(getenv('SELL_MARKUP_PCT') ?: 5.0),
@@ -95,5 +96,20 @@ final class Config
                 $_ENV[$key] = $value;
             }
         }
+    }
+
+    private static function envBool(string $key, bool $default): bool
+    {
+        $raw = getenv($key);
+        if ($raw === false) {
+            return $default;
+        }
+
+        $value = strtolower(trim((string)$raw));
+        if ($value === '') {
+            return $default;
+        }
+
+        return !in_array($value, ['0', 'false', 'off', 'no'], true);
     }
 }

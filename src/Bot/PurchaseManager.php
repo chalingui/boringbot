@@ -28,6 +28,7 @@ final class PurchaseManager
         private readonly ?Notifier $notifier,
         private readonly Logger $logger,
         array $tradeSymbols,
+        private readonly bool $buyEnabled,
         private readonly float $dcaAmountUsdt,
         private readonly int $dcaIntervalDays,
         private readonly int $dcaOffsetHours,
@@ -716,6 +717,11 @@ final class PurchaseManager
     private function placeNewPurchaseIfDue(): void
     {
         $nowUtc = new DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        if (!$this->buyEnabled) {
+            $this->logger->info('New purchases are disabled by config; skipping DCA creation.');
+            return;
+        }
+
         if ($this->tradeSymbols === []) {
             $this->logger->warn('No trade symbols configured; skipping DCA.');
             return;

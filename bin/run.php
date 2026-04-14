@@ -99,6 +99,7 @@ try {
         $notifier,
         $logger,
         $tradeSymbols,
+        (bool)($cfg['strategy']['buy_enabled'] ?? true),
         (float)$cfg['strategy']['dca_amount_usdt'],
         (int)$cfg['strategy']['dca_interval_days'],
         (int)($cfg['strategy']['dca_offset_hours'] ?? 0),
