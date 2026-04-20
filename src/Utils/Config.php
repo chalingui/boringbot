@@ -11,8 +11,7 @@ final class Config
         self::applyTimezone();
 
         $configFile = $rootDir . '/config/config.php';
-        /** @var array $cfg */
-        $cfg = is_file($configFile) ? require $configFile : [
+        $defaults = [
             'db_path' => $rootDir . '/db/boringbot.sqlite',
             'log_path' => $rootDir . '/logs/boringbot.log',
             'lock_path' => $rootDir . '/storage/boringbot.lock',
@@ -34,6 +33,15 @@ final class Config
                 'sell_qty_buffer' => (float)(getenv('SELL_QTY_BUFFER') ?: 0.0),
             ],
         ];
+
+        /** @var array $cfg */
+        $cfg = $defaults;
+        if (is_file($configFile)) {
+            $loaded = require $configFile;
+            if (is_array($loaded)) {
+                $cfg = array_replace_recursive($defaults, $loaded);
+            }
+        }
 
         // Optional overrides (useful for local testing without touching production DB/logs/lock).
         $dbPath = getenv('BORINGBOT_DB_PATH');

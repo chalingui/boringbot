@@ -20,6 +20,9 @@ return [
     ],
 
     'strategy' => [
+        'buy_enabled' => (($v = getenv('BUY_ENABLED')) !== false && trim((string)$v) !== '')
+            ? !in_array(strtolower(trim((string)$v)), ['0', 'false', 'off', 'no'], true)
+            : true,
         'dca_amount_usdt' => (float)(getenv('DCA_AMOUNT_USDT') ?: 100),
         'dca_interval_days' => (int)(getenv('DCA_INTERVAL_DAYS') ?: 7),
         'dca_offset_hours' => (int)(getenv('DCA_OFFSET_HOURS') ?: 0),
