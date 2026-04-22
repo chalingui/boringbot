@@ -1183,7 +1183,10 @@ echo '<div class="summary-item"><div class="summary-label">Symbols</div><div cla
 echo '<div class="summary-item"><div class="summary-label">DCA</div><div class="summary-value">' . h((string)($cfg['strategy']['dca_amount_usdt'] ?? '')) . ' USDT</div></div>';
 echo '<div class="summary-item"><div class="summary-label">Sell markup</div><div class="summary-value">' . h((string)($cfg['strategy']['sell_markup_pct'] ?? '')) . '%</div></div>';
 echo '<div class="summary-item"><div class="summary-label">Última compra</div><div class="summary-value">' . h($lastBuyLocal ?? '—') . '</div><div class="summary-meta">' . h($lastBuyAgo ?? 'n/a') . '</div></div>';
-echo '<div class="summary-item summary-item-highlight"><div class="summary-label">Próxima compra</div><div class="summary-value">' . h($nextBuyHuman ?? $nextBuyLocal ?? '—') . '</div><div class="summary-meta">' . h($nextBuyIn ?? 'n/a') . '</div></div>';
+$buyEnabled = (bool)($cfg['strategy']['buy_enabled'] ?? true);
+$nextBuySummaryValue = $buyEnabled ? ($nextBuyHuman ?? $nextBuyLocal ?? '—') : 'Compras deshabilitadas';
+$nextBuySummaryMeta = $buyEnabled ? ($nextBuyIn ?? 'n/a') : '';
+echo '<div class="summary-item summary-item-highlight"><div class="summary-label">Próxima compra</div><div class="summary-value">' . h($nextBuySummaryValue) . '</div><div class="summary-meta">' . h($nextBuySummaryMeta) . '</div></div>';
 echo '<div class="summary-item"><div class="summary-label">Última actualización</div><div class="summary-value">' . h(ago($lastAny)) . '</div><div class="summary-meta">' . h(fmtAtomLocal($lastAny)) . '</div></div>';
 echo '</div>';
 echo '</div>';
