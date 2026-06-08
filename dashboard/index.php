@@ -557,6 +557,19 @@ function renderChartCard(Database $db, array $cfg, string $symbol, string $inter
             $series = $bybit->klines($symbol, $interval, $fallbackStart, $seriesEndMs, min(200, $limit));
         }
     }
+    if ($series !== []) {
+        $lastSeriesMs = (float)$series[count($series) - 1][0];
+        if ($lastSeriesMs < $endMs) {
+            try {
+                $lastPriceNow = $bybit->tickerLastPrice($symbol);
+                if ($lastPriceNow !== null && $lastPriceNow > 0) {
+                    $series[] = [(float)$endMs, $lastPriceNow];
+                }
+            } catch (Throwable) {
+                // Keep the kline-only chart if the live ticker is temporarily unavailable.
+            }
+        }
+    }
 
     echo '<div class="card">';
     echo '<div class="muted">Precio ' . h($baseAsset) . ' vs tiempo</div>';
