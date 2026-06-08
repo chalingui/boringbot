@@ -108,6 +108,37 @@ Muestra:
 ## Deploy en cPanel (nota)
 Si clonás el repo dentro de `public_html`, bloqueá acceso web a `src/`, `bin/`, `config/`, `db/`, `logs/`, `storage/` (incluye `.env`). Este repo incluye `.htaccess` para eso; aun así, lo ideal es apuntar el DocumentRoot a otra carpeta.
 
+## Acceso al servidor
+Producción está en:
+- Host: `vps04.xyu.com.ar`
+- SSH port: `9022`
+- User: `xyucom`
+- Repo: `/home8/xyucom/public_html/boringbot.xyu.com.ar`
+- SSH key local usada desde esta máquina: `~/.ssh/boringbot_github`
+
+Conexión directa:
+```bash
+ssh -i ~/.ssh/boringbot_github -p 9022 -o IdentitiesOnly=yes xyucom@vps04.xyu.com.ar
+```
+
+Ejecutar un comando remoto:
+```bash
+ssh -i ~/.ssh/boringbot_github -p 9022 -o IdentitiesOnly=yes xyucom@vps04.xyu.com.ar \
+  'cd /home8/xyucom/public_html/boringbot.xyu.com.ar && php bin/status.php'
+```
+
+Deploy manual por Git:
+```bash
+ssh -i ~/.ssh/boringbot_github -p 9022 -o IdentitiesOnly=yes xyucom@vps04.xyu.com.ar \
+  'cd /home8/xyucom/public_html/boringbot.xyu.com.ar && git pull --ff-only origin main && php -l dashboard/index.php && php bin/status.php'
+```
+
+Notas:
+- No commitear ni copiar al repo credenciales de `config/.env`.
+- En producción la config efectiva vive en `config/.env`.
+- Antes de ejecutar compras reales, usar `php bin/run.php --dry-run`.
+- Si hay que operar compras manualmente, verificar primero `php bin/status.php` y `php bin/reconcile.php --dry-run`.
+
 ## cPanel Auto-Deploy (opcional)
 Este repo incluye `.cpanel.yml` para deployments automáticos desde **cPanel → Git Version Control → Manage → Deploy**.
 - Editar `DEPLOYPATH` dentro de `.cpanel.yml` para tu ruta del servidor.
