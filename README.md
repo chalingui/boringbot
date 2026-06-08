@@ -57,7 +57,7 @@ php bin/reconcile.php
 php bin/reconcile.php --dry-run
 ```
 - El comando consulta el balance real en Bybit.
-- Solo ajusta **en positivo** (si `bybit_usdt > bot_usdt`).
+- Sincroniza el ledger al saldo real de Bybit, tanto hacia arriba como hacia abajo.
 - Registra log y evento `RECONCILE` en `events_log`.
 
 ## Ejecución (cron)

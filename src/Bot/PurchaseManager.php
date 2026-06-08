@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace BoringBot\Bot;
 
 use BoringBot\DB\Database;
+use BoringBot\Exchange\BybitApiException;
 use BoringBot\Exchange\BybitClient;
 use BoringBot\Utils\Logger;
 use DateInterval;
@@ -91,8 +92,20 @@ final class PurchaseManager
 
         foreach ($rows as $p) {
             if (($p['buy_order_id'] ?? '') === '') {
-                $this->logger->warn('BUYING purchase without buy_order_id', ['purchase_id' => $p['id']]);
-                continue;
+                if ($this->dryRun) {
+                    continue;
+                }
+
+                $placed = $this->tryPlaceDeferredBuyOrder($p);
+                if (!$placed) {
+                    continue;
+                }
+                $p['buy_order_id'] = (string)($this->db->fetchOne('SELECT buy_order_id FROM purchases WHERE id = :id', [
+                    ':id' => $p['id'],
+                ])['buy_order_id'] ?? '');
+                if (($p['buy_order_id'] ?? '') === '') {
+                    continue;
+                }
             }
 
             if ($this->dryRun) {
@@ -851,6 +864,29 @@ final class PurchaseManager
                 ]);
                 $this->logger->info('Market buy placed', ['purchase_id' => $purchaseId, 'orderId' => $buyOrderId, 'symbol' => $symbol]);
             } catch (Throwable $e) {
+                if ($this->isInsufficientBalanceError($e)) {
+                    $this->logger->warn('Failed to place market buy; purchase will stay BUYING and retry later', [
+                        'purchase_id' => $purchaseId,
+                        'symbol' => $symbol,
+                        'error' => $e->getMessage(),
+                    ]);
+                    try {
+                        $this->db->begin();
+                        $this->addBalance('USDT', $this->dcaAmountUsdt);
+                        $this->insertEvent('BUY_DEFERRED', [
+                            'purchase_id' => $purchaseId,
+                            'symbol' => $symbol,
+                            'reason' => 'insufficient_balance',
+                            'error' => $e->getMessage(),
+                        ]);
+                        $this->db->commit();
+                    } catch (Throwable $e2) {
+                        $this->db->rollBack();
+                        throw $e2;
+                    }
+                    continue;
+                }
+
                 $this->logger->error('Failed to place market buy; refunding ledger USDT and marking purchase ERROR', [
                     'purchase_id' => $purchaseId,
                     'symbol' => $symbol,
@@ -940,6 +976,79 @@ final class PurchaseManager
             ':a' => $asset,
             ':d' => $delta,
         ]);
+    }
+
+    private function tryPlaceDeferredBuyOrder(array $purchase): bool
+    {
+        $symbol = $this->symbolFromPurchase($purchase);
+        try {
+            $buyOrderId = $this->bybit->createMarketBuyByQuote($symbol, (float)$purchase['buy_usdt']);
+        } catch (Throwable $e) {
+            if ($this->isInsufficientBalanceError($e)) {
+                $this->logger->info('Deferred buy still waiting for funds', [
+                    'purchase_id' => $purchase['id'],
+                    'symbol' => $symbol,
+                    'error' => $e->getMessage(),
+                ]);
+                return false;
+            }
+            $this->logger->error('Deferred buy failed; marking purchase ERROR', [
+                'purchase_id' => $purchase['id'],
+                'symbol' => $symbol,
+                'error' => $e->getMessage(),
+            ]);
+            try {
+                $this->db->begin();
+                $this->db->exec('UPDATE purchases SET status = :st WHERE id = :id', [
+                    ':st' => 'ERROR',
+                    ':id' => $purchase['id'],
+                ]);
+                $this->insertEvent('BUY_FAILED', [
+                    'purchase_id' => (int)$purchase['id'],
+                    'symbol' => $symbol,
+                    'error' => $e->getMessage(),
+                ]);
+                $this->db->commit();
+            } catch (Throwable $e2) {
+                $this->db->rollBack();
+                throw $e2;
+            }
+            return false;
+        }
+
+        try {
+            $this->db->begin();
+            $this->db->exec(
+                'UPDATE purchases SET buy_order_id = :o WHERE id = :id',
+                [':o' => $buyOrderId, ':id' => $purchase['id']]
+            );
+            $this->addBalance('USDT', -((float)$purchase['buy_usdt']));
+            $this->insertEvent('BUY_ORDER_PLACED_RETRY', [
+                'purchase_id' => (int)$purchase['id'],
+                'buy_order_id' => $buyOrderId,
+                'symbol' => $symbol,
+            ]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+
+        $this->logger->info('Deferred market buy placed', [
+            'purchase_id' => $purchase['id'],
+            'orderId' => $buyOrderId,
+            'symbol' => $symbol,
+        ]);
+        return true;
+    }
+
+    private function isInsufficientBalanceError(Throwable $e): bool
+    {
+        if ($e instanceof BybitApiException && $e->retCode === 170131) {
+            return true;
+        }
+
+        return str_contains(strtolower($e->getMessage()), 'insufficient balance');
     }
 
     private function baseAssetFromSymbol(string $symbol): string

@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS purchases (
 
 CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);
 CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at);
-CREATE INDEX IF NOT EXISTS idx_purchases_symbol ON purchases(symbol);
 
 CREATE TABLE IF NOT EXISTS events_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
